@@ -3,6 +3,7 @@ title: <a-image>
 type: primitives
 layout: docs
 parent_section: primitives
+source_code: src/extras/primitives/primitives/a-image.js
 ---
 
 The image primitive shows an image on a flat plane.
@@ -38,13 +39,15 @@ The image primitive shows an image on a flat plane.
 | shader          | material.shader         | flat          |
 | side            | material.side           | front         |
 | src             | material.src            | None          |
-| transparent     | material.transparent    | false         |
+| transparent     | material.transparent    | true          |
 | width           | geometry.width          | 1             |
 
 ## Fine-Tuning
 
-Ensuring that the image is not distorted by stretching requires us to appropriately set the `width` and `height`.
+Ensuring that the image is not distorted by stretching requires us to appropriately set the `width` and `height` preserving the original aspect ratio of the image. This properties are set in meters, don't confuse with pixels.
+
+For example, a 2:1 image:
 
 ```html
-<a-image src="#logo" width="200" height="100"></a-image>
+<a-image src="#logo" width="3" height="1.5"></a-image>
 ```

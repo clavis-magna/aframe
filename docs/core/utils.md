@@ -4,6 +4,7 @@ type: core
 layout: docs
 parent_section: core
 order: 11
+source_code: src/utils/index.js
 ---
 
 A-Frame's utility modules are public through `AFRAME.utils`.
@@ -14,12 +15,15 @@ A-Frame's utility modules are public through `AFRAME.utils`.
 
 Module for handling vec3 and vec4 types.
 
-### `.isCoordinate (value)`
+### `.isCoordinates (value)`
 
-Tests whether a string is a vec3.
+Tests whether a string is a vec3 or vec4.
 
 ```js
-AFRAME.utils.coordinates.isCoordinate('1 2 3')
+AFRAME.utils.coordinates.isCoordinates('1 2 3')
+// >> true
+
+AFRAME.utils.coordinates.isCoordinates('1 2 3 4')
 // >> true
 ```
 
@@ -34,11 +38,14 @@ AFRAME.utils.coordinates.parse('1 2 -3')
 
 ### `.stringify (data)`
 
-Stringifies an `{x, y, z}` vec3 object to an "x y z" string.
+Stringifies an `{x, y, z}` vec3 object to an "x y z" string.Or Stringifies an `{x, y, z, w}` vec4 object to an "x y z w" string.
 
 ```js
 AFRAME.utils.coordinates.stringify({x: 1, y: 2, z: -3})
 // >> "1 2 -3"
+
+AFRAME.utils.coordinates.stringify({x: 1, y: 2, z: -3, w:4})
+// >> "1 2 -3 4"
 ```
 
 ## `AFRAME.utils.entity`
@@ -69,7 +76,7 @@ multi-property component.
 
 ### `.setComponentProperty (entity, componentName, value, delimiter)`
 
-[setattr]: ./entity.md#setattribute-attr-value-componentattrvalue
+[setattr]: ./entity.md#setattribute-componentname-value-propertyvalue-clobber
 
 Performs like [`Entity.setAttribute`][setattr], but with support for setting an
 individual property for a multi-property component. `componentName` is a string
@@ -147,19 +154,45 @@ Checks if a VR headset is connected by looking for orientation data. Returns a `
 
 Checks if device is Gear VR. Returns a `boolean`.
 
+### `AFRAME.utils.device.isOculusGo ()`
+
+Checks if device is Oculus Go. Returns a `boolean`.
+
 ### `AFRAME.utils.device.isMobile ()`
 
 Checks if device is a smartphone. Returns a `boolean`.
 
 ## Function Utils
 
-### `AFRAME.utils.throttle (function, interval [, optionalContext])`
+### `AFRAME.utils.throttle (function, minimumInterval [, optionalContext])`
+
+[lodash]: https://lodash.com/docs/#throttle
 
 Returns a throttled function that is called at most once every
 `minimumInterval` milliseconds. A context such as `this` can be provided to
-handle function binding for convenience.
+handle function binding for convenience. The same as [lodash's
+`throttle`][lodash].
 
-### `AFRAME.utils.throttleTick (function (t, dt) {...}, interval [, optionalContext])`
+```js
+AFRAME.registerComponent('foo', {
+  init: function () {
+    // Set up throttling.
+    this.throttledFunction = AFRAME.utils.throttle(this.everySecond, 1000, this);
+  },
+
+  everySecond: function () {
+    // Called every second.
+    console.log("A second passed.");
+  },
+
+  tick: function (t, dt) {
+    this.throttledFunction();  // Called once a second.
+    console.log("A frame passed.");  // Called every frame.
+   },
+});
+```
+
+### `AFRAME.utils.throttleTick (function (t, dt) {...}, minimumInterval [, optionalContext])`
 
 Returns a throttled function that is called at most once every
 `minimumInterval` milliseconds. A context such as `this` can be provided to
@@ -173,12 +206,24 @@ render loop.
 AFRAME.registerComponent('foo', {
   init: function () {
     // Set up the tick throttling.
-    this.tick = AFRAME.utils.throttleTick(this.throttledTick, 500, this);
+    this.tick = AFRAME.utils.throttleTick(this.tick, 500, this);
   },
 
   /**
    * Tick function that will be wrapped to be throttled.
    */
-  throttledTick: function (t, dt) {}
+  tick: function (t, dt) {}
 });
+```
+
+## Miscellaneous
+
+### `AFRAME.utils.getUrlParameter (name)`
+
+Returns the value of a URL parameter as a string, otherwise returns an empty
+string.
+
+```js
+AFRAME.utils.getUrlParameter('testing');
+// If visiting the current page with ?testing=aframe, this will log 'aframe'.
 ```

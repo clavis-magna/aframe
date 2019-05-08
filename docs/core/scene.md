@@ -4,6 +4,8 @@ type: core
 layout: docs
 parent_section: core
 order: 5
+source_code: src/core/scene/a-scene.js
+examples: []
 ---
 
 [entity]: ./entity.md
@@ -55,6 +57,12 @@ before kicking off the render loop.
 | systems       | Instantiated [systems][systems].                                          |
 | time          | Global uptime of scene in seconds.                                        |
 
+## States
+
+| Name    | Description                                                                                                            |
+|---------|------------------------------------------------------------------------------------------------------------------------|
+| vr-mode | Added and removed when entering and exiting VR, respectively. Check with `sceneEl.is('vr-mode')`. |
+
 ## Methods
 
 | Name    | Description                                                                                                            |
@@ -83,7 +91,7 @@ Components can be attached to the scene as well as entities:
 [embedded]: ../components/embedded.md
 [fog]: ../components/fog.md
 [keyboard-shortcuts]: ../components/keyboard-shortcuts.md
-[inspector]: ../guides/using-the-aframe-inspector.md
+[inspector]: ../introduction/visual-inspector-and-dev-tools.md
 [stats]: ../components/stats.md
 [vr-mode-ui]: ../components/vr-mode-ui.md
 

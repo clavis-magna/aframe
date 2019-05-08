@@ -4,13 +4,16 @@ type: core
 layout: docs
 parent_section: core
 order: 3
+source_code: src/core/component.js
+examples: []
 ---
 
-[componentguide]: ../guides/writing-an-aframe-component.md
-[ecs]: ./index.md
+[ecs]: ../introduction/entity-component-system.md
 [entity]: ./entity.md
 [multiple]: #multiple
 [three]: http://threejs.org/
+[setAttribute]: ../introduction/javascript-events-dom-apis.md#updating-a-component-with-setattribute
+[flushToDom]: #flushtodom
 
 In the [entity-component-system pattern][ecs], a component is a reusable and
 modular chunk of data that we plug into an entity to add appearance, behavior,
@@ -55,7 +58,7 @@ attribute:
 
 ### Multi-Property Component
 
-If a component is a *multi-property* component, meaning the data is consists of
+If a component is a *multi-property* component, meaning the data consists of
 multiple properties and values, then in HTML, the component value resembles
 inline CSS styles:
 
@@ -144,10 +147,10 @@ types:
 | asset           | For URLs pointing to general assets. Can parse URL out of a string in the form of `url(<url>)`. If the value is an element ID selector (e.g., `#texture`), this property type will call `getElementById` and `getAttribute('src')` to return a URL. The `asset` property type may or may not change to handle XHRs or return MediaElements directly (e.g., `<img>` elements). | ''                       |
 | audio           | Same parsing as the `asset` property type. Will possibly be used by the A-Frame Inspector to present audio assets.                                                                                                                                                                                                                                               | ''                       |
 | boolean         | Parses string to boolean (i.e., `"false"` to false, everything else truthy).                                                                                                                                                                                                                                                                                     | false                    |
-| color           | Currently doesn't do any parsing. Primarily used by the A-Frame Inspector to present a color picker.                                                                                                                                                                                                                                                             | #FFF                     |
+| color           | Currently doesn't do any parsing. Primarily used by the A-Frame Inspector to present a color picker. Also, it is required to use color type for color animations to work.                                                                                                                                                                                                                                                            | #FFF                     |
 | int             | Calls `parseInt` (e.g., `"124.5"` to `124`).                                                                                                                                                                                                                                                                                                                     | 0                        |
-| map             | Same parsing as the `asset` property type. Will possibly be used bt the A-Frame Inspector to present texture assets.                                                                                                                                                                                                                                             | ''                       |
-| model           | Same parsing as the `asset` property type. Will possibly be used bt the A-Frame Inspector to present model assets.                                                                                                                                                                                                                                               | ''                       |
+| map             | Same parsing as the `asset` property type. Will possibly be used by the A-Frame Inspector to present texture assets.                                                                                                                                                                                                                                             | ''                       |
+| model           | Same parsing as the `asset` property type. Will possibly be used by the A-Frame Inspector to present model assets.                                                                                                                                                                                                                                               | ''                       |
 | number          | Calls `parseFloat` (e.g., `"124.5"` to `124.5'`).                                                                                                                                                                                                                                                                                                                  | 0                        |
 | selector        | Calls `querySelector` (e.g., `"#box"` to `<a-entity id="box">`).                                                                                                                                                                                                                                                                                                  | null                     |
 | selectorAll     | Calls `querySelectorAll` and converts `NodeList` to `Array` (e.g., `".boxes"` to [<a-entity class="boxes", ...]),                                                                                                                                                                                                                                                | null                     |
@@ -177,20 +180,27 @@ schema: {type: 'vec3'}  // default: {x: 0, y: 0, z: 0}
 
 #### Custom Property Type
 
-We can also define our own property type or parser by providing a `parse`
+We can also define our own property type by providing a `parse` and `stringify`
 function in place of a `type`:
 
 ```js
 schema: {
-  // Parse slash-delimited string to an array (e.g., `foo="myProperty: a/b"` to `['a', 'b']`).
+  // Parse slash-delimited string to an array (e.g., `foo="myProperty: a/b"` to `['a', 'b']`),
+  // stringify array to string (e.g., `['a', 'b']` to `foo="myProperty: a/b"`)
   myProperty: {
     default: [],
     parse: function (value) {
       return value.split('/');
+    },
+    stringify: function (value) {
+      return value.join('/');
     }
   }
 }
 ```
+
+`parse` is called when component properties are updated by `setAttribute` method.
+`stringify` is called when DOM is updated by [flushToDom][flushToDom] method.
 
 ### Single-Property Schema
 
@@ -233,21 +243,23 @@ the data to modify the entity. The handlers will usually interact with the
 | update       | Called both when the component is initialized and whenever any of the component's properties is updated (e.g, via *setAttribute*). Used to modify the entity.                                                             |
 | remove       | Called when the component is removed from the entity (e.g., via *removeAttribute*) or when the entity is detached from the scene. Used to undo all previous modifications to the entity.                                  |
 | tick         | Called on each render loop or tick of the scene. Used for continuous changes or checks.                                                                                                                                   |
+| tock         | Called on each render loop or tick of the scene after the scene has rendererd. Used for post processing effects or other logic that needs to happen after the scene has been drawn.                                                                                                                                   |
 | play         | Called whenever the scene or entity plays to add any background or dynamic behavior. Also called once when the component is initialized. Used to start or resume behavior.                                                |
 | pause        | Called whenever the scene or entity pauses to remove any background or dynamic behavior. Also called when the component is removed from the entity or when the entity is detached from the scene. Used to pause behavior. |
 | updateSchema | Called whenever any of the component's properties is updated. Can be used to dynamically modify the schema.                                                                                                               |
+
 ### Component Prototype Properties
 
 [scene]: ./scene.md
 
 Within the methods, we have access to the component prototype via `this`:
 
-| Property        | Description                                                                                                                                   |
-|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| this.data       | Parsed component properties computed from the schema default values, mixins, and the entity's attributes.                                     |
-| this.el         | Reference to the [entity][entity] as an HTML element.                                                                                         |
-| this.el.sceneEl | Reference to the [scene][scene] as an HTML element.                                                                                           |
-| this.id         | If the component can have [multiple instances][multiple], the ID of the individual instance of the component (e.g., `foo` from `sound__foo`). |
+| Property        | Description                                                                                                                                                                                                                                         |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| this.data       | Parsed component properties computed from the schema default values, mixins, and the entity's attributes. <br/>__Important:__ Do not modify the data attribute directly. It is updated internally by A-Frame. To modify a component, use [setAttribute][setAttribute].|
+| this.el         | Reference to the [entity][entity] as an HTML element.                                                                                                                                                                                               |
+| this.el.sceneEl | Reference to the [scene][scene] as an HTML element.                                                                                                                                                                                                 |
+| this.id         | If the component can have [multiple instances][multiple], the ID of the individual instance of the component (e.g., `foo` from `sound__foo`).                                                                                                       |
 
 ### `.init ()`
 
@@ -394,6 +406,12 @@ AFRAME.registerComponent('tracked-controls', {
 });
 ```
 
+### `.tock (time, timeDelta, camera)`
+
+Identical to the tick method but invoked after the scene has rendered.
+
+The `tock` handler is used to run logic that needs access to the drawn scene before it's pushed into the headset like postprocessing effects.
+
 ### `.pause ()`
 
 `.pause ()` is called when the entity or scene pauses. The entity can call a
@@ -507,9 +525,10 @@ AFRAME.registerComponent('c', {});
 
 [sound]: ../components/sound.md
 
-`multiple` allows for a component to have multiple instances. By default, since
-`multiple` is set to `false`, a component could have one instance. For
-example, an entity could only have one geometry component.
+The `multiple` flag allows for a component to have multiple instances of itself
+on an entity. Since `multiple` is set to `false` by default, an entity could
+only have a single instance of a component. For example, an entity could only
+have one geometry component.
 
 But if a component has `multiple` set to `true`, then the component can have
 multiple instances:
@@ -561,6 +580,31 @@ AFRAME.registerComponent('foo', {
   update: function () {
     // An object3D will be set using `foo__bar` as the key.
     this.el.setObject3D(this.attrName, new THREE.Mesh());
+  }
+});
+```
+
+### `events`
+
+The `events` object allows for conveniently defining event handlers that get
+binded and automatically attached and detached at appropriate times during the
+component's lifecycle:
+
+- Attached on `.play()`
+- Detached on `.pause()` and `.remove()`
+
+Using `events` ensures that event handlers properly clean themselves up when
+the entity or scene is paused, or the component is detached. If a component's
+event handlers are registered manually and not detached properly, the event
+handler can still fire even after the component no longer exists.
+
+```js
+AFRAME.registerComponent('foo', {
+  events: {
+    click: function (evt) {
+      console.log('This entity was clicked!');
+      this.el.setAttribute('material', 'color', 'red');
+    }
   }
 });
 ```

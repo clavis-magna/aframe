@@ -7,8 +7,10 @@ var degToRad = require('index').THREE.Math.degToRad;
  * parameters. That info is mostly lost when converting a Geometry to a BufferGeometry.
  */
 suite('geometry', function () {
+  let el;
+
   setup(function (done) {
-    var el = this.el = helpers.entityFactory();
+    el = helpers.entityFactory();
     el.setAttribute('geometry', 'buffer: false; primitive: box;');
     el.addEventListener('loaded', function () {
       done();
@@ -17,23 +19,22 @@ suite('geometry', function () {
 
   suite('update', function () {
     test('allows empty geometry', function () {
-      this.el.setAttribute('geometry', '');
+      el.setAttribute('geometry', '');
     });
 
     test('creates geometry', function () {
-      var mesh = this.el.getObject3D('mesh');
+      var mesh = el.getObject3D('mesh');
       assert.ok(mesh.geometry);
       assert.equal(mesh.geometry.type, 'BoxGeometry');
     });
 
     test('updates geometry', function () {
-      var mesh = this.el.getObject3D('mesh');
-      this.el.setAttribute('geometry', 'buffer: false; primitive: box; width: 5');
+      var mesh = el.getObject3D('mesh');
+      el.setAttribute('geometry', 'buffer: false; primitive: box; width: 5');
       assert.equal(mesh.geometry.parameters.width, 5);
     });
 
     test('updates geometry for segment-related attribute', function () {
-      var el = this.el;
       var mesh = el.getObject3D('mesh');
       el.setAttribute('geometry', 'buffer: false; primitive: sphere');
       el.setAttribute('geometry', 'buffer: false; primitive: sphere; segmentsWidth: 8');
@@ -41,7 +42,6 @@ suite('geometry', function () {
     });
 
     test('can change type of geometry', function () {
-      var el = this.el;
       var mesh = el.getObject3D('mesh');
       el.setAttribute('geometry', 'buffer: false; primitive: sphere');
       assert.equal(mesh.geometry.type, 'SphereGeometry');
@@ -50,7 +50,6 @@ suite('geometry', function () {
     });
 
     test('disposes geometry', function () {
-      var el = this.el;
       var geometry = el.getObject3D('mesh').geometry;
       var disposeSpy = this.sinon.spy(geometry, 'dispose');
       assert.notOk(disposeSpy.called);
@@ -59,69 +58,23 @@ suite('geometry', function () {
     });
   });
 
-  suite('merge geometries', function () {
-    setup(function (done) {
-      var self = this;
-      var targetEl = this.targetEl = helpers.entityFactory();
-      targetEl.setAttribute('geometry', 'buffer: false; primitive: box;');
-      targetEl.addEventListener('loaded', function () {
-        var sourceEl = self.sourceEl = document.createElement('a-entity');
-        targetEl.sceneEl.appendChild(sourceEl);
-        sourceEl.addEventListener('loaded', function () {
-          done();
-        });
-      });
-    });
-
-    test('merges geometries', function () {
-      var sourceEl = this.sourceEl;
-      var targetEl = this.targetEl;
-      var sceneEl = sourceEl.sceneEl;
-      var targetGeometry = targetEl.getObject3D('mesh').geometry;
-      targetEl.id = 'mergeTarget';
-      sourceEl.id = 'mergeSource';
-      assert.ok(sceneEl.querySelector('#mergeSource'));
-      assert.equal(targetGeometry.vertices.length, 8);
-      sourceEl.setAttribute('geometry', 'buffer: false; skipCache: true; primitive: box; mergeTo: #mergeTarget');
-      assert.equal(sceneEl.querySelector('#mergeSource'), null);
-      assert.equal(targetGeometry.vertices.length, 16);
-    });
-
-    test('it does not merge geometries if the target is not a valid entity', function () {
-      var sourceEl = this.sourceEl;
-      // The target is not an entity.
-      var sceneEl = sourceEl.sceneEl;
-      var targetEl = document.createElement('a');
-      sceneEl.appendChild(targetEl);
-      targetEl.id = 'mergeTarget';
-      sourceEl.id = 'mergeSource';
-      assert.ok(sceneEl.querySelector('#mergeSource'));
-      assert.ok(sceneEl.querySelector('#mergeTarget'));
-      sourceEl.setAttribute('geometry', 'buffer: false; skipCache: true; primitive: box; mergeTo: #mergeTarget');
-      assert.notEqual(sceneEl.querySelector('#mergeSource'), null);
-      assert.ok(sceneEl.querySelector('#mergeTarget'));
-      assert.equal(sourceEl.getObject3D('mesh').geometry.vertices.length, 8);
-    });
-  });
-
   suite('remove', function () {
     test('removes geometry', function () {
-      var mesh = this.el.getObject3D('mesh');
-      this.el.removeAttribute('geometry');
+      var mesh = el.getObject3D('mesh');
+      el.removeAttribute('geometry');
       assert.equal(mesh.geometry.type, 'Geometry');
     });
 
     test('disposes geometry', function () {
-      var geometry = this.el.getObject3D('mesh').geometry;
+      var geometry = el.getObject3D('mesh').geometry;
       var disposeSpy = this.sinon.spy(geometry, 'dispose');
-      this.el.removeAttribute('geometry');
+      el.removeAttribute('geometry');
       assert.ok(disposeSpy.called);
     });
   });
 
   suite('buffer', function () {
     test('uses BufferGeometry', function () {
-      var el = this.el;
       assert.notEqual(el.getObject3D('mesh').geometry.type, 'BufferGeometry');
       el.setAttribute('geometry', 'buffer', true);
       assert.equal(el.getObject3D('mesh').geometry.type, 'BufferGeometry');
@@ -130,8 +83,9 @@ suite('geometry', function () {
 });
 
 suite('standard geometries', function () {
+  let el;
   setup(function (done) {
-    var el = this.el = helpers.entityFactory();
+    el = helpers.entityFactory();
     el.setAttribute('geometry', 'primitive: box');
     el.addEventListener('loaded', function () {
       done();
@@ -139,7 +93,6 @@ suite('standard geometries', function () {
   });
 
   test('circle', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false, primitive: 'circle', radius: 5, segments: 4, thetaStart: 0, thetaLength: 350
@@ -154,7 +107,6 @@ suite('standard geometries', function () {
   });
 
   test('cylinder', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false,
@@ -181,7 +133,6 @@ suite('standard geometries', function () {
   });
 
   test('cone', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false,
@@ -208,7 +159,6 @@ suite('standard geometries', function () {
   });
 
   test('icosahedron', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false, primitive: 'icosahedron', detail: 0, radius: 5});
@@ -220,7 +170,6 @@ suite('standard geometries', function () {
   });
 
   test('plane', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {buffer: false, primitive: 'plane', width: 1, height: 2});
 
@@ -231,7 +180,6 @@ suite('standard geometries', function () {
   });
 
   test('ring', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false, primitive: 'ring', radiusInner: 1, radiusOuter: 2, segmentsTheta: 3});
@@ -244,7 +192,6 @@ suite('standard geometries', function () {
   });
 
   test('sphere', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false,
@@ -269,7 +216,6 @@ suite('standard geometries', function () {
   });
 
   test('torus', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false,
@@ -291,7 +237,6 @@ suite('standard geometries', function () {
   });
 
   test('torus knot', function () {
-    var el = this.el;
     var geometry;
     el.setAttribute('geometry', {
       buffer: false,
@@ -312,5 +257,44 @@ suite('standard geometries', function () {
     assert.equal(geometry.parameters.tubularSegments, 4);
     assert.equal(geometry.parameters.p, 5);
     assert.equal(geometry.parameters.q, 6);
+  });
+
+  test('triangle', function () {
+    var geometry;
+    el.setAttribute('geometry', {
+      buffer: false,
+      primitive: 'triangle',
+      vertexA: {x: 1, y: 2, z: 3},
+      vertexB: {x: 4, y: 5, z: 6},
+      vertexC: {x: 7, y: 8, z: 9}
+    });
+
+    geometry = el.getObject3D('mesh').geometry;
+    assert.equal(geometry.type, 'Geometry');
+    var vertices = geometry.vertices;
+    assert.equal(vertices.length, 3);
+    assert.equal(vertices[0].x, 1);
+    assert.equal(vertices[0].y, 2);
+    assert.equal(vertices[0].z, 3);
+    assert.equal(vertices[1].x, 4);
+    assert.equal(vertices[1].y, 5);
+    assert.equal(vertices[1].z, 6);
+    assert.equal(vertices[2].x, 7);
+    assert.equal(vertices[2].y, 8);
+    assert.equal(vertices[2].z, 9);
+  });
+
+  test('retains data on detach and reattach', function (done) {
+    helpers.elFactory().then(el => {
+      el.setAttribute('geometry', 'primitive', 'plane');
+      el.sceneEl.removeChild(el);
+      setTimeout(() => {
+        el.sceneEl.appendChild(el);
+        setTimeout(() => {
+          assert.equal(el.components.geometry.data.primitive, 'plane');
+          done();
+        });
+      });
+    });
   });
 });

@@ -11,18 +11,17 @@ suite('text', function () {
       return {
         default: '/base/tests/assets/test.fnt?foo',
         mozillavr: '/base/tests/assets/test.fnt?bar',
-        roboto: '/base/tests/assets/test.fnt?baz'
+        roboto: '/base/tests/assets/test.fnt?baz',
+        msdf: '/base/tests/assets/test.fnt?msdf'
       }[key];
     });
 
     el = entityFactory();
-
-    this.doneCalled = false;
-    el.addEventListener('componentinitialized', evt => {
-      if (this.doneCalled) { return; }
-      if (evt.detail.name !== 'text') { return; }
+    var fontSet = false;
+    el.addEventListener('textfontset', function () {
+      if (fontSet) { return; }
+      fontSet = true;
       component = el.components.text;
-      this.doneCalled = true;
       done();
     });
     el.setAttribute('text', '');
@@ -38,7 +37,7 @@ suite('text', function () {
   });
 
   suite('multiple', function () {
-    test('can have multiple instances', function () {
+    test('can have multiple instances', () => {
       el.setAttribute('text__foo', {value: 'foo'});
       el.setAttribute('text__bar', {value: 'bar'});
       el.setAttribute('text__baz', {value: 'baz'});
@@ -50,6 +49,30 @@ suite('text', function () {
   });
 
   suite('update', function () {
+    test('updates value', function (done) {
+      var updateSpy = this.sinon.spy(component.geometry, 'update');
+      el.addEventListener('textfontset', evt => {
+        assert.equal(updateSpy.getCalls()[0].args[0].value, '');
+        el.setAttribute('text', {value: 'foo', font: 'mozillavr'});
+        assert.equal(updateSpy.getCalls()[1].args[0].value, 'foo');
+        el.setAttribute('text', {value: 'bar', font: 'mozillavr'});
+        assert.equal(updateSpy.getCalls()[2].args[0].value, 'bar');
+        done();
+      });
+      el.setAttribute('text', {font: 'mozillavr'});
+    });
+
+    test('updates value with number', function (done) {
+      var updateSpy = this.sinon.spy(component.geometry, 'update');
+      el.addEventListener('textfontset', evt => {
+        assert.equal(updateSpy.getCalls()[0].args[0].value, '');
+        el.setAttribute('text', {value: 10, font: 'mozillavr'});
+        assert.equal(updateSpy.getCalls()[1].args[0].value, '10');
+        done();
+      });
+      el.setAttribute('text', {font: 'mozillavr'});
+    });
+
     test('updates geometry with value', function (done) {
       // There are two paths by which geometry update can happen:
       // 1. As after-effect of font change.
@@ -103,6 +126,16 @@ suite('text', function () {
       el.setAttribute('text', 'shader', 'sdf');
       assert.equal(updateMaterialSpy.getCalls().length, 2);
     });
+
+    test('caches texture', function (done) {
+      var el2 = document.createElement('a-entity');
+      el2.setAttribute('text', '');
+      el.appendChild(el2);
+      setTimeout(() => {
+        assert.equal(el.components.text.texture, el2.components.text.texture);
+        done();
+      });
+    });
   });
 
   suite('createOrUpdateMaterial', function () {
@@ -143,11 +176,16 @@ suite('text', function () {
 
     test('updates material side', function () {
       var value;
-      value = el.getObject3D('text').material.side;
-      assert.equal(value, THREE.FrontSide);
       el.setAttribute('text', 'side', 'double');
       value = el.getObject3D('text').material.side;
       assert.equal(value, THREE.DoubleSide);
+    });
+
+    test('updates material negate', function () {
+      var value;
+      el.setAttribute('text', 'negate', false);
+      value = el.getObject3D('text').material.uniforms.negate.value;
+      assert.equal(value, 0.0);
     });
   });
 
@@ -193,6 +231,38 @@ suite('text', function () {
         done();
       });
       el.setAttribute('text', {font: 'mozillavr', fontImage: '/base/tests/assets/test2.png'});
+    });
+
+    test('loads font with inferred font image', function (done) {
+      // `test.fnt` contains an absolute filepath, which should be ignored
+      // in favor of a page-relative texture URL.
+      el.addEventListener('textfontset', evt => {
+        component.currentFont.pages[0] = 'C:\\Windows\\Documents\\custom-texture.png';
+        assert.equal(component.getFontImageSrc(), '/base/tests/assets/test.png');
+        done();
+      });
+      el.setAttribute('text', 'font', '/base/tests/assets/test.fnt');
+    });
+
+    test('loads font with referenced font image', function (done) {
+      // `test.fnt` contains a local reference to the page texture, which
+      // should be loaded relative to the font's base path.
+      el.addEventListener('textfontset', evt => {
+        component.currentFont.pages[0] = 'custom-texture.png';
+        assert.equal(component.getFontImageSrc(), '/base/tests/assets/custom-texture.png');
+        done();
+      });
+      el.setAttribute('text', {font: 'msdf'});
+    });
+
+    test('uses up-to-date data once loaded', function (done) {
+      var updateSpy = this.sinon.spy(component.geometry, 'update');
+      el.addEventListener('textfontset', evt => {
+        assert.equal(updateSpy.getCalls()[0].args[0].value, 'bar');
+        done();
+      });
+      el.setAttribute('text', {value: 'foo', font: 'mozillavr'});
+      el.setAttribute('text', {value: 'bar', font: 'mozillavr'});
     });
   });
 

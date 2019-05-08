@@ -1,5 +1,14 @@
 var THREE = require('../lib/three');
 
+var HLS_MIMETYPES = ['application/x-mpegurl', 'application/vnd.apple.mpegurl'];
+
+var COLOR_MAPS = new Set([
+  'emissiveMap',
+  'envMap',
+  'map',
+  'specularMap'
+]);
+
 /**
  * Update `material` texture property (usually but not always `map`)
  * from `data` property (usually but not always `src`)
@@ -10,6 +19,7 @@ var THREE = require('../lib/three');
 module.exports.updateMapMaterialFromData = function (materialName, dataName, shader, data) {
   var el = shader.el;
   var material = shader.material;
+  var rendererSystem = el.sceneEl.systems.renderer;
   var src = data[dataName];
 
   // Because a single material / shader may have multiple textures,
@@ -49,6 +59,9 @@ module.exports.updateMapMaterialFromData = function (materialName, dataName, sha
 
   function setMap (texture) {
     material[materialName] = texture;
+    if (texture && COLOR_MAPS.has(materialName)) {
+      rendererSystem.applyColorCorrection(texture);
+    }
     material.needsUpdate = true;
     handleTextureEvents(el, texture);
   }
@@ -76,6 +89,7 @@ module.exports.updateDistortionMap = function (longType, shader, data) {
   if (longType === 'ambientOcclusion') { shortType = 'ao'; }
   var el = shader.el;
   var material = shader.material;
+  var rendererSystem = el.sceneEl.systems.renderer;
   var src = data[longType + 'Map'];
   var info = {};
   info.src = src;
@@ -99,7 +113,11 @@ module.exports.updateDistortionMap = function (longType, shader, data) {
   setMap(null);
 
   function setMap (texture) {
-    material[shortType + 'Map'] = texture;
+    var slot = shortType + 'Map';
+    material[slot] = texture;
+    if (texture && COLOR_MAPS.has(slot)) {
+      rendererSystem.applyColorCorrection(texture);
+    }
     material.needsUpdate = true;
     handleTextureEvents(el, texture);
   }
@@ -118,7 +136,17 @@ function handleTextureEvents (el, texture) {
 
   // Video events.
   if (!texture.image || texture.image.tagName !== 'VIDEO') { return; }
+
   texture.image.addEventListener('loadeddata', function emitVideoTextureLoadedDataAll () {
+    // Check to see if we need to use iOS 10 HLS shader.
+    // Only override the shader if it is stock shader that we know doesn't correct.
+    if (!el.components || !el.components.material) { return; }
+
+    if (texture.needsCorrectionBGRA && texture.needsCorrectionFlipY &&
+        ['standard', 'flat'].indexOf(el.components.material.data.shader) !== -1) {
+      el.setAttribute('material', 'shader', 'ios10hls');
+    }
+
     el.emit('materialvideoloadeddata', {src: texture.image, texture: texture});
   });
   texture.image.addEventListener('ended', function emitVideoTextureEndedAll () {
@@ -127,3 +155,15 @@ function handleTextureEvents (el, texture) {
   });
 }
 module.exports.handleTextureEvents = handleTextureEvents;
+
+/**
+ * Given video element src and type, guess whether stream is HLS.
+ *
+ * @param {string} src - src from video element (generally URL to content).
+ * @param {string} type - type from video element (generally MIME type if present).
+ */
+module.exports.isHLS = function (src, type) {
+  if (type && HLS_MIMETYPES.includes(type.toLowerCase())) { return true; }
+  if (src && src.toLowerCase().indexOf('.m3u8') > 0) { return true; }
+  return false;
+};

@@ -3,6 +3,18 @@ title: material
 type: components
 layout: docs
 parent_section: components
+source_code: src/components/material.js
+examples:
+  - title: Displacement Shader
+    src: https://glitch.com/edit/#!/aframe-displacement-shader?path=client/index.js:1:0
+  - title: Shader Walkthrough
+    src: https://codepen.io/machenmusik/pen/WZyQNj
+  - title: Grid Shader
+    src: https://glitch.com/edit/#!/aframe-simpler-shader?path=public/index.html
+  - title: Real-Time Vertex Displacement Shader
+    src: https://glitch.com/edit/#!/aframe-displacement-registershader?path=public/index.html
+  - title: Real-Time Vertex Displacement with Offset
+    src: https://glitch.com/edit/#!/aframe-displacement-offset-registershader?path=public/index.html
 ---
 
 [fog]: ./fog.md
@@ -46,18 +58,21 @@ Here is an example of using an example custom material:
 The material component has some base properties. More properties are available
 depending on the material type applied.
 
-| Property    | Description                                                                                                                                       | Default Value |
-|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| depthTest   | Whether depth testing is enabled when rendering the material.                                                                                     | true          |
-| flatShading | Use `THREE.FlatShading` rather than `THREE.StandardShading`.                                                                                      | true          |
-| opacity     | Extent of transparency. If the `transparent` property is not `true`, then the material will remain opaque and `opacity` will only affect color.   | 1.0           |
-| transparent | Whether material is transparent. Transparent entities are rendered after non-transparent entities.                                                | false         |
-| shader      | Which material to use. Defaults to the [standard material][standard]. Can be set to the [flat material][flat] or to a registered custom material. | standard      |
-| side        | Which sides of the mesh to render. Can be one of `front`, `back`, or `double`.                                                                    | front         |
-| visible | Whether material is visible. Raycasters will ignore invisible materials. | true |
-| offset | Texture offset to be used. | {x: 0, y: 0} |
-| repeat | Texture repeat to be used. | {x: 1, y: 1} |
-| npot | Use settings for non-power-of-two (NPOT) texture. | false |
+| Property     | Description                                                                                                                                       | Default Value |
+|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| alphaTest    | Alpha test threshold for transparency.                                                                                                            | 0             |
+| depthTest    | Whether depth testing is enabled when rendering the material.                                                                                     | true          |
+| flatShading  | Use `THREE.FlatShading` rather than `THREE.StandardShading`.                                                                                      | false         |
+| npot         | Use settings for non-power-of-two (NPOT) texture.                                                                                                 | false         |
+| offset       | Texture offset to be used.                                                                                                                        | {x: 0, y: 0}  |
+| opacity      | Extent of transparency. If the `transparent` property is not `true`, then the material will remain opaque and `opacity` will only affect color.   | 1.0           |
+| repeat       | Texture repeat to be used.                                                                                                                        | {x: 1, y: 1}  |
+| shader       | Which material to use. Defaults to the [standard material][standard]. Can be set to the [flat material][flat] or to a registered custom shader material. | standard      |
+| side         | Which sides of the mesh to render. Can be one of `front`, `back`, or `double`.                                                                    | front         |
+| transparent  | Whether material is transparent. Transparent entities are rendered after non-transparent entities.                                                | false         |
+| vertexColors | Whether to use vertex or face colors to shade the material. Can be one of `none`, `vertex`, or `face`.                                            | none          |
+| visible      | Whether material is visible. Raycasters will ignore invisible materials.                                                                          | true          |
+| blending     | The blending mode for the material's RGB and Alpha sent to the WebGLRenderer. Can be one of `none`, `normal`, `additive`, `subtractive` or `multiply`.  | normal          |
 
 ## Events
 
@@ -73,7 +88,7 @@ A-Frame ships with a couple of built-in materials.
 
 ### `standard`
 
-[threestandardmaterial]: http://threejs.org/docs/#Reference/Materials/MeshStandardMaterial
+[threestandardmaterial]: https://threejs.org/docs/#api/materials/MeshStandardMaterial
 
 The `standard` material is the default material. It uses the physically-based
 [THREE.MeshStandardMaterial][threestandardmaterial].
@@ -84,21 +99,23 @@ These properties are available on top of the base material properties.
 
 | Property                      | Description                                                                                                                                     | Default Value |
 |-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| ambientOcclusionMap           | Ambient occlusion map. Used to add shadows to the mesh. Can either be a selector to an `<img>` an inline URL.                                   | None          |
+| ambientOcclusionMap           | Ambient occlusion map. Used to add shadows to the mesh. Can either be a selector to an `<img>`, or an inline URL. Requires 2nd set of UVs (see below). | None          |
 | ambientOcclusionMapIntensity  | The intensity of the ambient occlusion map, a number between 0 and 1.                                                                           | 1             |
 | ambientOcclusionTextureRepeat | How many times the ambient occlusion texture repeats in the X and Y direction.                                                                  | 1 1           |
 | ambientOcclusionTextureOffset | How the ambient occlusion texture is offset in the x y direction.                                                                               | 0 0           |
 | color                         | Base diffuse color.                                                                                                                             | #fff          |
-| displacementMap               | Displacement map. Used to distort a mesh. Can either be a selector to an `<img>` an inline URL.                                                 | None          |
+| displacementMap               | Displacement map. Used to distort a mesh. Can either be a selector to an `<img>`, or an inline URL.                                             | None          |
 | displacementScale             | The intensity of the displacement map effect                                                                                                    | 1             |
 | displacementBias              | The zero point of the displacement map.                                                                                                         | 0.5           |
 | displacementTextureRepeat     | How many times the displacement texture repeats in the X and Y direction.                                                                       | 1 1           |
 | displacementTextureOffset     | How the displacement texture is offset in the x y direction.                                                                                    | 0 0           |
+| emissive                      | The color of the emissive lighting component. Used to make objects produce light even without other lighting in the scene.                      | #000          |
+| emissiveIntensity             | Intensity of the emissive lighting component.                                                                                                   | 1             |
 | height                        | Height of video (in pixels), if defining a video texture.                                                                                       | 360           |
 | envMap                        | Environment cubemap texture for reflections. Can be a selector to <a-cubemap> or a comma-separated list of URLs.                                | None          |
 | fog                           | Whether or not material is affected by [fog][fog].                                                                                              | true          |
-| metalness                     | How metallic the material is from `0` to `1`.                                                                                                   | 0.5           |
-| normalMap                     | Normal map. Used to add the illusion of complex detail. Can either be a selector to an `<img>` an inline URL.                                   | None          |
+| metalness                     | How metallic the material is from `0` to `1`.                                                                                                   | 0             |
+| normalMap                     | Normal map. Used to add the illusion of complex detail. Can either be a selector to an `<img>`, or an inline URL.                               | None          |
 | normalScale                   | Scale of the effect of the normal map in the X and Y directions.                                                                                | 1 1           |
 | normalTextureRepeat           | How many times the normal texture repeats in the X and Y direction.                                                                             | 1 1           |
 | normalTextureOffset           | How the normal texture is offset in the x y direction.                                                                                          | 0 0           |
@@ -133,7 +150,10 @@ For example, for a tree bark material, as an estimation, we might set:
 
 There are three properties which give the illusion of complex geometry:
 
-- **Ambient occlusion maps** - Applies a texture to the image which add shadows.
+- **Ambient occlusion maps** - Applies subtle shadows in areas that receive less
+  ambient light. Direct (point, directional) lights do not affect ambient occlusion
+  maps. Baked ambient occlusion requires a 2nd set of UVs, which may be added to
+  the mesh in modeling software or using JavaScript.
 - **Displacement maps** - Distorts a simpler model at a high resolution
   allowing more detail. This will affect the mesh's silhouette but can be
   expensive.
@@ -174,7 +194,7 @@ For example:
 
 ### `flat`
 
-[basic]: http://threejs.org/docs/#Reference/Materials/MeshBasicMaterial
+[basic]: https://threejs.org/docs/#api/materials/MeshBasicMaterial
 
 The `flat` material uses the [THREE.MeshBasicMaterial][basic]. Flat materials
 are not affected by the scene's lighting conditions. This is useful for things
@@ -228,7 +248,7 @@ Most of the other properties works together with textures. For example, the
 `color` property will act as the base color and multiplies per pixel with the
 texture. Set it to `#fff` to maintain the original colors of the texture.
 
-A-Frame caches textures are to not push redundant textures to the GPU.
+A-Frame caches textures so as to not push redundant textures to the GPU.
 
 ### Video Textures
 
@@ -318,19 +338,118 @@ visual defects.
 
 To work around this issue, try changing the order of the entities in the HTML.
 
-## Register a Custom Material
+When using PNG images as cutouts or masks (where part of the image should be
+fully transparent, and the rest fully opaque), try setting `transparent: false`
+and like `alphaTest: 0.5` to solve transparency issues. Play around with the alpha
+test value.
 
-We can register custom materials for appearances and effects using `AFRAME.registerShader`.
+## Register a Custom Shader Material
+
+We can register custom shader materials for appearances and effects using
+`AFRAME.registerShader`.
+
+[example]: https://codepen.io/machenmusik/pen/WZyQNj
+
+Let's walk through an [example CodePen][example] with step-by-step commentary.
+As always, we need to include the A-Frame script.
+
+```js
+<script src="https://aframe.io/releases/0.9.2/aframe.min.js"></script>
+```
+
+Next, we define any components and shaders we need after the A-Frame
+script but before the scene declaration. Here, we begin our `my-custom` shader.
+The schema declares any parameters for the shader.
+
+```js
+<script>
+AFRAME.registerShader('my-custom', {
+  schema: {
+    // ...
+  }
+});
+</script>
+```
+
+We usually want to support the `color` and `opacity` properties.  `is:
+'uniform'` tells A-Frame this property should appear as uniform value in the
+shaders:
+
+```js
+<script>
+AFRAME.registerShader('my-custom', {
+  schema: {
+    color: {type: 'color', is: 'uniform', default: 'red'},
+    opacity: {type: 'number', is: 'uniform', default: 1.0}
+  }
+});
+</script>
+```
+
+[rawshader]: https://threejs.org/docs/#api/en/materials/RawShaderMaterial
+[shadermaterial]: https://threejs.org/docs/#api/en/materials/ShaderMaterial
+
+Setting `raw` to `true` uses [THREE.RawShaderMaterial][rawshader] instead of
+[ShaderMaterial][shadermaterial] so built-in uniforms and attributes are not
+automatically added to your shader code. Here we want to include the usual
+prefixes with GLSL constants and such, so leave it `false`.
+
+```js
+  raw: false,
+```
+
+We're going to use the default vertex shader by omitting `vertexShader`.  Note
+that if our fragment shader cares about texture coordinates, our vertex shader
+should set `varying` values to use in the fragment shader.
+
+Since almost every WebVR-capable browser supports ES6, we define our fragment
+shader as a multi-line string:
+
+```js
+  fragmentShader:
+`
+  // Use medium precision.
+  precision mediump float;
+
+  // This receives the color value from the schema, which becomes a vec3 in the shader.
+  uniform vec3 color;
+
+  // This receives the opacity value from the schema, which becomes a number.
+  uniform float opacity;
+
+  // This is the shader program.
+  // A fragment shader can set the color via gl_FragColor,
+  // or decline to draw anything via discard.
+  void main () {
+    // Note that this shader doesn't use texture coordinates.
+    // Set the RGB portion to our color,
+    // and the alpha portion to our opacity.
+    gl_FragColor = vec4(color, opacity);
+  }
+`
+});
+</script>
+```
+
+And using our shader from the `material` component:
+
+```html
+<!-- A box using our shader, not fully opaque and blue. -->
+<a-box material="shader: my-custom; color: blue; opacity: 0.7; transparent: true" position="0 0 -2"></a-box>
+```
 
 ### `registerShader`
 
 Like components, custom materials have schema and lifecycle handlers.
 
-| Property | Description                                                                                                                 |
-|----------|-----------------------------------------------------------------------------------------------------------------------------|
-| schema   | Defines properties, uniforms, attributes that the shader will use to extend the material component.                         |
-| init     | Lifecycle handler called once during shader initialization. Used to create the material.                                    |
-| update   | Lifecycle handler called once during shader initialization and when data is updated. Used to update the material or shader. |
+| Property       | Description                                                                                                                          |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| fragmentShader | Optional string containing the fragment shader. If omitted, a simple default is used.                                                |
+| init           | Optional lifecycle handler called once during shader initialization. Used to create the material.                                    |
+| raw            | Optional. If true, uses THREE.RawShaderMaterial to accept shaders verbatim. If false (default), uses THREE.ShaderMaterial.           |
+| schema         | Defines properties, uniforms, attributes that the shader will use to extend the material component.                                  |
+| update         | Optional lifecycle handler called once during shader initialization and when data is updated. Used to update the material or shader. |
+| vertexShader   | Optional string containing the vertex shader. If omitted, a simple default is used.                                                  |
 
 ### Schema
 
@@ -346,35 +465,248 @@ AFRAME.registerShader('custom', {
 });
 ```
 
-### Example
-
-[line-dashed]: http://threejs.org/docs/index.html#Reference/Materials/LineDashedMaterial
-
-To create a custom material, we have the `init` and `update` handlers set and
-update `this.material` to the desired material. Here is an example of
-registering a [`THREE.LinedDashedMaterial`][line-dashed]:
+To pass data values into the shader(s) as uniform values, include `is:
+'uniform'` in the definition:
 
 ```js
-AFRAME.registerShader('line-dashed', {
+AFRAME.registerShader('my-custom', {
   schema: {
-    dashSize: {default: 3},
-    lineWidth: {default: 1}
+    color: {type:'color', is:'uniform', default:'red'},
+    opacity: {type:'number', is:'uniform', default:1.0}
+  },
+  ...
+```
+
+## Supported Uniform Types
+
+The uniform types supported by A-Frame are summarized in the table below.  Note
+that `time` can eliminate the need for a `tick()` handler in many cases.
+
+| A-Frame Type | THREE Type | GLSL Shader Type     |
+|--------------|------------|----------------------|
+| array        | v3         | vec3                 |
+| color        | v3         | vec3                 |
+| int          | i          | int                  |
+| number       | f          | float                |
+| map          | t          | map                  |
+| time         | f          | float (milliseconds) |
+| vec2         | v2         | vec2                 |
+| vec3         | v3         | vec3                 |
+| vec4         | v4         | vec4                 |
+
+### Example - GLSL and Shaders
+
+For more customized visual effects, we can write GLSL shaders and apply them to
+A-Frame entities.
+
+> NOTE: GLSL, the syntax used to write shaders, may seem a bit scary at first.
+> For a gentle (and free!) introduction, we recommend [The Book of
+> Shaders](http://thebookofshaders.com/).
+
+Here are the vertex and fragment shaders we'll use:
+
+```glsl
+// vertex.glsl
+
+varying vec2 vUv;
+
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+```
+
+```glsl
+// fragment.glsl
+
+varying vec2 vUv;
+uniform vec3 color;
+uniform float timeMsec; // A-Frame time in milliseconds.
+
+void main() {
+  float time = timeMsec / 1000.0; // Convert from A-Frame milliseconds to typical time in seconds.
+  // Use sin(time), which curves between 0 and 1 over time,
+  // to determine the mix of two colors:
+  //    (a) Dynamic color where 'R' and 'B' channels come
+  //        from a modulus of the UV coordinates.
+  //    (b) Base color.
+  //
+  // The color itself is a vec4 containing RGBA values 0-1.
+  gl_FragColor = mix(
+    vec4(mod(vUv , 0.05) * 20.0, 1.0, 1.0),
+    vec4(color, 1.0),
+    sin(time)
+  );
+}
+```
+
+To use these vertex and fragment shaders, after reading them into strings
+`vertexShader` and `fragmentShader`, we register our custom shader with
+A-Frame:
+
+```js
+// shader-grid-glitch.js
+
+AFRAME.registerShader('grid-glitch', {
+  schema: {
+    color: {type: 'color', is: 'uniform'},
+    timeMsec: {type: 'time', is: 'uniform'}
   },
 
-  /**
-   * `init` used to initialize material. Called once.
-   */
-  init: function (data) {
-    this.material = new THREE.LineDashedMaterial(data);
-    this.update(data);  // `update()` currently not called after `init`. (#1834)
+  vertexShader: vertexShader,
+  fragmentShader: fragmentShader
+});
+```
+
+And using from HTML markup:
+
+```html
+<a-sphere material="shader:grid-glitch; color: blue;" radius="0.5" position="0 1.5 -2"></a-sphere>
+```
+
+* [Live demo](https://aframe-simpler-shader.glitch.me/)
+* [Remix this on Glitch](https://glitch.com/edit/#!/aframe-simpler-shader)
+
+![5093034e-97f2-40dc-8cb9-28ca75bfd75b-8043-00000dbc2e00268d](https://cloud.githubusercontent.com/assets/1848368/24825516/abb98abe-1bd4-11e7-8262-93d3efb6056f.gif)
+
+***
+
+For a more advanced example, [try Real-Time Vertex Displacement](https://glitch.com/edit/#!/aframe-displacement-registershader).
+
+![b19320eb-802a-462a-afcd-3d0dd9480aee-861-000004c2a8504498](https://cloud.githubusercontent.com/assets/1848368/24825518/b52e5bf6-1bd4-11e7-8eb2-9a9c1ff82ce9.gif)
+
+## Using a Custom Shader and Component Together
+
+Let's take the real-time vertex displacement shader example above, and add the
+capability to apply an offset based upon the camera's position. We declare
+that offset as a uniform vec3 value `myOffset`:
+
+```js
+AFRAME.registerShader('displacement-offset', {
+  schema: {
+    timeMsec: {type: 'time', is: 'uniform'},
+    myOffset: {type: 'vec3', is: 'uniform'}
+  },
+  vertexShader: vertexShader,
+  fragmentShader: fragmentShader
+});
+```
+
+[vertexshaderglitch]: https://glitch.com/edit/#!/aframe-displacement-offset-registershader?path=displacement-offset-shader.js:1:0
+
+Used by [this vertex shader][vertexshaderglitch]. So how do we update
+`myOffset` to be the camera position from A-Frame such that the vertex shader
+behaves correctly? The typical method to do this in A-Frame is to create a
+component with the desired functionality, and attach it to the appropriate
+entity.
+
+Note that the shader property is exposed via the `material` component, so we
+modify the single property of interest using a form of `setAttribute()`. As
+best practice to avoid creating garbage for performance reasons:
+
+- Do not use the form of `setAttribute` that takes an object as second argument.
+- Create a component property to hold the offset, to avoid creating a new `THREE.Vector3` every tick.
+
+```js
+AFRAME.registerComponent('myoffset-updater', {
+  init: function () {
+    this.offset = new THREE.Vector3();
   },
 
-  /**
-   * `update` used to update the material. Called on initialization and when data updates.
-   */
-  update: function (data) {
-    this.material.dashsize = data.dashsize;
-    this.material.linewidth = data.linewidth;
+  tick: function (t, dt) {
+    this.offset.copy(this.el.sceneEl.camera.el.getAttribute('position'));
+    this.offset.y = 0;
+    this.el.setAttribute('material', 'myOffset', this.offset);
+  }
+});
+```
+
+We then apply the component to the entity with the custom shader:
+
+```html
+<a-scene>
+  <a-sphere
+    animation="property: scale; dir: alternate; dur: 5000; loop: true; to: 4 4 4"
+    geometry="radius: 0.2"
+    material="shader: displacement-offset"
+    myoffset-updater
+    position="0 1.5 -2">
+  </a-sphere>
+  <a-box color="#CCC" width="3" depth="3" height="0.1" position="0 0 -2"></a-box>
+</a-scene>
+```
+
+Voila!
+
+- [Live demo](https://aframe-displacement-offset-registershader.glitch.me/)
+- [Remix this on Glitch](https://glitch.com/edit/#!/aframe-displacement-offset-registershader)
+
+Another good example of using a component to set shader values is the [A-Frame
+Shaders example](https://aframe.io/aframe/examples/test/shaders/).  This
+component reacts to `rotation` updates to the element with id `orbit` by
+computing the `sunPosition` vector to use in the sky shader:
+
+```js
+AFRAME.registerComponent('sun-position-setter', {
+  init: function () {
+    var skyEl = this.el;
+    var orbitEl = this.el.sceneEl.querySelector('#orbit');
+
+    orbitEl.addEventListener('componentchanged', function changeSun (evt) {
+      var sunPosition;
+      var phi;
+      var theta;
+
+      if (evt.detail.name !== 'rotation') { return; }
+
+      sunPosition = orbitEl.getAttribute('rotation');
+
+      if(sunPosition === null) { return; }
+
+      theta = Math.PI * (- 0.5);
+      phi = 2 * Math.PI * (sunPosition.y / 360 - 0.5);
+      skyEl.setAttribute('material', 'sunPosition', {
+        x: Math.cos(phi),
+        y: Math.sin(phi) * Math.sin(theta),
+        z: -1
+      });
+    });
+  }
+});
+```
+
+[shadertoy]: https://shadertoy.com
+[shaderfrog]: https://github.com/chenzlabs/aframe-import-shaderfrog
+
+In addition, there are components developed by the A-Frame developer community
+that allow the use of existing shaders from repositories such as
+[ShaderToy][shadertoy] and [ShaderFrog][shaderfrog].
+
+Note however that these shaders can be quite demanding in terms of
+computational and graphics power, and some more complex shaders may not
+function well on lower-performance devices such as smartphones.
+
+## Creating a Material from a Component
+
+For those cases where the `registerShader` API lacks needed functionality
+(e.g., no `tick` handler, some missing uniform types), we recommend creating a
+custom material by creating three.js materials (e.g., `RawShaderMaterial`,
+`ShaderMaterial`) within a component:
+
+```js
+AFRAME.registerComponent('custom-material', {
+  schema: {
+    // Add properties.
+  },
+
+  init: function () {
+    this.material = this.el.getOrCreateObject3D('mesh').material = new THREE.ShaderMaterial({
+      // ...
+    });
+  },
+
+  update: function () {
+    // Update `this.material`.
   }
 });
 ```

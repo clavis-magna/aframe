@@ -19,8 +19,27 @@ module.exports.Component = registerComponent('light', {
     distance: {default: 0.0, min: 0, if: {type: ['point', 'spot']}},
     intensity: {default: 1.0, min: 0, if: {type: ['ambient', 'directional', 'hemisphere', 'point', 'spot']}},
     penumbra: {default: 0, min: 0, max: 1, if: {type: ['spot']}},
-    type: {default: 'directional', oneOf: ['ambient', 'directional', 'hemisphere', 'point', 'spot']},
-    target: {type: 'selector', if: {type: ['spot', 'directional']}}
+    type: {
+      default: 'directional',
+      oneOf: ['ambient', 'directional', 'hemisphere', 'point', 'spot'],
+      schemaChange: true
+    },
+    target: {type: 'selector', if: {type: ['spot', 'directional']}},
+
+    // Shadows.
+    castShadow: {default: false, if: {type: ['point', 'spot', 'directional']}},
+    shadowBias: {default: 0, if: {castShadow: true}},
+    shadowCameraFar: {default: 500, if: {castShadow: true}},
+    shadowCameraFov: {default: 90, if: {castShadow: true}},
+    shadowCameraNear: {default: 0.5, if: {castShadow: true}},
+    shadowCameraTop: {default: 5, if: {castShadow: true}},
+    shadowCameraRight: {default: 5, if: {castShadow: true}},
+    shadowCameraBottom: {default: -5, if: {castShadow: true}},
+    shadowCameraLeft: {default: -5, if: {castShadow: true}},
+    shadowCameraVisible: {default: false, if: {castShadow: true}},
+    shadowMapHeight: {default: 512, if: {castShadow: true}},
+    shadowMapWidth: {default: 512, if: {castShadow: true}},
+    shadowRadius: {default: 1, if: {castShadow: true}}
   },
 
   /**
@@ -30,6 +49,7 @@ module.exports.Component = registerComponent('light', {
     var el = this.el;
     this.light = null;
     this.defaultTarget = null;
+    this.rendererSystem = this.el.sceneEl.systems.renderer;
     this.system.registerLight(el);
   },
 
@@ -40,10 +60,12 @@ module.exports.Component = registerComponent('light', {
     var data = this.data;
     var diffData = diff(data, oldData);
     var light = this.light;
+    var rendererSystem = this.rendererSystem;
     var self = this;
 
     // Existing light.
     if (light && !('type' in diffData)) {
+      var shadowsLoaded = false;
       // Light type has not changed. Update light.
       Object.keys(diffData).forEach(function (key) {
         var value = data[key];
@@ -51,11 +73,13 @@ module.exports.Component = registerComponent('light', {
         switch (key) {
           case 'color': {
             light.color.set(value);
+            rendererSystem.applyColorCorrection(light.color);
             break;
           }
 
           case 'groundColor': {
             light.groundColor.set(value);
+            rendererSystem.applyColorCorrection(light.groundColor);
             break;
           }
 
@@ -73,13 +97,32 @@ module.exports.Component = registerComponent('light', {
             } else {
               // Target specified, set target to entity's `object3D` when it is loaded.
               if (value.hasLoaded) {
-                self.onSetTarget(value);
+                self.onSetTarget(value, light);
               } else {
-                value.addEventListener('loaded', bind(self.onSetTarget, self, value));
+                value.addEventListener('loaded', bind(self.onSetTarget, self, value, light));
               }
             }
             break;
           }
+
+          case 'castShadow':
+          case 'shadowBias':
+          case 'shadowCameraFar':
+          case 'shadowCameraFov':
+          case 'shadowCameraNear':
+          case 'shadowCameraTop':
+          case 'shadowCameraRight':
+          case 'shadowCameraBottom':
+          case 'shadowCameraLeft':
+          case 'shadowCameraVisible':
+          case 'shadowMapHeight':
+          case 'shadowMapWidth':
+          case 'shadowRadius':
+            if (!shadowsLoaded) {
+              self.updateShadow();
+              shadowsLoaded = true;
+            }
+            break;
 
           default: {
             light[key] = value;
@@ -91,6 +134,7 @@ module.exports.Component = registerComponent('light', {
 
     // No light yet or light type has changed. Create and add light.
     this.setLight(this.data);
+    this.updateShadow();
   },
 
   setLight: function (data) {
@@ -119,16 +163,62 @@ module.exports.Component = registerComponent('light', {
   },
 
   /**
+   * Updates shadow-related properties on the current light.
+   */
+  updateShadow: function () {
+    var el = this.el;
+    var data = this.data;
+    var light = this.light;
+
+    light.castShadow = data.castShadow;
+
+    // Shadow camera helper.
+    var cameraHelper = el.getObject3D('cameraHelper');
+    if (data.shadowCameraVisible && !cameraHelper) {
+      el.setObject3D('cameraHelper', new THREE.CameraHelper(light.shadow.camera));
+    } else if (!data.shadowCameraVisible && cameraHelper) {
+      el.removeObject3D('cameraHelper');
+    }
+
+    if (!data.castShadow) { return light; }
+
+    // Shadow appearance.
+    light.shadow.bias = data.shadowBias;
+    light.shadow.radius = data.shadowRadius;
+    light.shadow.mapSize.height = data.shadowMapHeight;
+    light.shadow.mapSize.width = data.shadowMapWidth;
+
+    // Shadow camera.
+    light.shadow.camera.near = data.shadowCameraNear;
+    light.shadow.camera.far = data.shadowCameraFar;
+    if (light.shadow.camera instanceof THREE.OrthographicCamera) {
+      light.shadow.camera.top = data.shadowCameraTop;
+      light.shadow.camera.right = data.shadowCameraRight;
+      light.shadow.camera.bottom = data.shadowCameraBottom;
+      light.shadow.camera.left = data.shadowCameraLeft;
+    } else {
+      light.shadow.camera.fov = data.shadowCameraFov;
+    }
+    light.shadow.camera.updateProjectionMatrix();
+
+    if (cameraHelper) { cameraHelper.update(); }
+  },
+
+  /**
    * Creates a new three.js light object given data object defining the light.
    *
    * @param {object} data
    */
   getLight: function (data) {
     var angle = data.angle;
-    var color = new THREE.Color(data.color).getHex();
+    var color = new THREE.Color(data.color);
+    this.rendererSystem.applyColorCorrection(color);
+    color = color.getHex();
     var decay = data.decay;
     var distance = data.distance;
-    var groundColor = new THREE.Color(data.groundColor).getHex();
+    var groundColor = new THREE.Color(data.groundColor);
+    this.rendererSystem.applyColorCorrection(groundColor);
+    groundColor = groundColor.getHex();
     var intensity = data.intensity;
     var type = data.type;
     var target = data.target;
@@ -144,9 +234,9 @@ module.exports.Component = registerComponent('light', {
         this.defaultTarget = light.target;
         if (target) {
           if (target.hasLoaded) {
-            this.onSetTarget(target);
+            this.onSetTarget(target, light);
           } else {
-            target.addEventListener('loaded', bind(this.onSetTarget, this, target));
+            target.addEventListener('loaded', bind(this.onSetTarget, this, target, light));
           }
         }
         return light;
@@ -165,9 +255,9 @@ module.exports.Component = registerComponent('light', {
         this.defaultTarget = light.target;
         if (target) {
           if (target.hasLoaded) {
-            this.onSetTarget(target);
+            this.onSetTarget(target, light);
           } else {
-            target.addEventListener('loaded', bind(this.onSetTarget, this, target));
+            target.addEventListener('loaded', bind(this.onSetTarget, this, target, light));
           }
         }
         return light;
@@ -180,14 +270,18 @@ module.exports.Component = registerComponent('light', {
     }
   },
 
-  onSetTarget: function (targetEl) {
-    this.light.target = targetEl.object3D;
+  onSetTarget: function (targetEl, light) {
+    light.target = targetEl.object3D;
   },
 
   /**
    * Remove light on remove (callback).
    */
   remove: function () {
-    this.el.removeObject3D('light');
+    var el = this.el;
+    el.removeObject3D('light');
+    if (el.getObject3D('cameraHelper')) {
+      el.removeObject3D('cameraHelper');
+    }
   }
 });

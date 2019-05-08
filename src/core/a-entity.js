@@ -1,4 +1,3 @@
-/* global HTMLElement */
 var ANode = require('./a-node');
 var COMPONENTS = require('./component').components;
 var registerElement = require('./a-register-element').registerElement;
@@ -6,11 +5,12 @@ var THREE = require('../lib/three');
 var utils = require('../utils/');
 
 var AEntity;
-var bind = utils.bind;
 var debug = utils.debug('core:a-entity:debug');
 var warn = utils.debug('core:a-entity:warn');
 
 var MULTIPLE_COMPONENT_DELIMITER = '__';
+var OBJECT3D_COMPONENTS = ['position', 'rotation', 'scale', 'visible'];
+var ONCE = {once: true};
 
 /**
  * Entity is a container object that components are plugged into to comprise everything in
@@ -24,24 +24,19 @@ var MULTIPLE_COMPONENT_DELIMITER = '__';
  * @member {boolean} isPlaying - false if dynamic behavior of the entity is paused.
  */
 var proto = Object.create(ANode.prototype, {
-  defaultComponents: {
-    value: {
-      position: '',
-      rotation: '',
-      scale: '',
-      visible: ''
-    }
-  },
-
   createdCallback: {
     value: function () {
       this.components = {};
+      // To avoid double initializations and infinite loops.
+      this.initializingComponents = {};
+      this.componentsToUpdate = {};
       this.isEntity = true;
       this.isPlaying = false;
       this.object3D = new THREE.Group();
       this.object3D.el = this;
       this.object3DMap = {};
       this.parentEl = null;
+      this.rotationObj = {};
       this.states = [];
     }
   },
@@ -100,68 +95,22 @@ var proto = Object.create(ANode.prototype, {
    */
   detachedCallback: {
     value: function () {
+      var componentName;
+
       if (!this.parentEl) { return; }
 
       // Remove components.
-      Object.keys(this.components).forEach(bind(this.removeComponent, this));
+      for (componentName in this.components) {
+        this.removeComponent(componentName, false);
+      }
 
       if (this.isScene) { return; }
 
       this.removeFromParent();
       ANode.prototype.detachedCallback.call(this);
-    }
-  },
 
-  /**
-   * Apply mixin to component.
-   */
-  handleMixinUpdate: {
-    value: function (attrName) {
-      if (!attrName) {
-        this.updateComponents();
-        return;
-      }
-      this.updateComponent(attrName, this.getDOMAttribute(attrName));
-    }
-  },
-
-  mapStateMixins: {
-    value: function (state, op) {
-      var mixins = this.getAttribute('mixin');
-      var mixinIds;
-      if (!mixins) { return; }
-      mixinIds = mixins.split(' ');
-      mixinIds.forEach(function (id) {
-        var mixinId = id + '-' + state;
-        op(mixinId);
-      });
-      this.updateComponents();
-    }
-  },
-
-  updateStateMixins: {
-    value: function (newMixins, oldMixins) {
-      var self = this;
-      oldMixins = oldMixins || '';
-      var newMixinsIds = newMixins.split(' ');
-      var oldMixinsIds = oldMixins ? oldMixins.split(' ') : [];
-      // The list of mixins that might have been removed on update
-      var diff = oldMixinsIds.filter(function (i) { return newMixinsIds.indexOf(i) < 0; });
-      // Remove the mixins that are gone on update
-      diff.forEach(function (mixinId) {
-        var forEach = Array.prototype.forEach;
-        // State Mixins
-        var stateMixinsEls = document.querySelectorAll('[id^=' + mixinId + '-]');
-        forEach.call(stateMixinsEls, function (el) {
-          self.unregisterMixin(el.id);
-        });
-      });
-      this.states.forEach(function (state) {
-        newMixinsIds.forEach(function (id) {
-          var mixinId = id + '-' + state;
-          self.registerMixin(mixinId);
-        });
-      });
+      // Remove cyclic reference.
+      this.object3D.el = null;
     }
   },
 
@@ -238,6 +187,8 @@ var proto = Object.create(ANode.prototype, {
         object3D = new Constructor();
         this.setObject3D(type, object3D);
       }
+      warn('`getOrCreateObject3D` has been deprecated. Use `setObject3D()` ' +
+           'and `object3dset` event instead.');
       return object3D;
     }
   },
@@ -253,7 +204,7 @@ var proto = Object.create(ANode.prototype, {
         throw new Error("Trying to add an element that doesn't have an `object3D`");
       }
       this.object3D.add(el.object3D);
-      this.emit('child-attached', { el: el });
+      this.emit('child-attached', {el: el});
     }
   },
 
@@ -280,7 +231,7 @@ var proto = Object.create(ANode.prototype, {
       var parentEl = this.parentEl;
       this.parentEl.remove(this);
       this.attachedToParent = false;
-      this.parentEl = this.parentNode = null;
+      this.parentEl = null;
       parentEl.emit('child-detached', {el: this});
     }
   },
@@ -289,9 +240,12 @@ var proto = Object.create(ANode.prototype, {
     value: function () {
       var self = this;
 
-      if (this.hasLoaded) { return; }
+      if (this.hasLoaded || !this.parentEl) { return; }
 
       ANode.prototype.load.call(this, function entityLoadCallback () {
+        // Check if entity was detached while it was waiting to load.
+        if (!self.parentEl) { return; }
+
         self.updateComponents();
         if (self.isScene || self.parentEl.isPlaying) { self.play(); }
       });
@@ -306,7 +260,11 @@ var proto = Object.create(ANode.prototype, {
    */
   remove: {
     value: function (el) {
-      this.object3D.remove(el.object3D);
+      if (el) {
+        this.object3D.remove(el.object3D);
+      } else {
+        this.parentNode.removeChild(this);
+      }
     }
   },
 
@@ -339,16 +297,24 @@ var proto = Object.create(ANode.prototype, {
   initComponent: {
     value: function (attrName, data, isDependency) {
       var component;
-      var componentInfo = attrName.split(MULTIPLE_COMPONENT_DELIMITER);
-      var componentId = componentInfo[1];
-      var componentName = componentInfo[0];
-      var isComponentDefined = checkComponentDefined(this, attrName) || data !== undefined;
+      var componentId;
+      var componentInfo;
+      var componentName;
+      var isComponentDefined;
+
+      componentInfo = utils.split(attrName, MULTIPLE_COMPONENT_DELIMITER);
+      componentName = componentInfo[0];
+      componentId = componentInfo.length > 2
+        ? componentInfo.slice(1).join('__')
+        : componentInfo[1];
 
       // Not a registered component.
       if (!COMPONENTS[componentName]) { return; }
 
       // Component is not a dependency and is undefined.
       // If a component is a dependency, then it is okay to have no data.
+      isComponentDefined = checkComponentDefined(this, attrName) ||
+                           data !== undefined;
       if (!isComponentDefined && !isDependency) { return; }
 
       // Component already initialized.
@@ -363,8 +329,7 @@ var proto = Object.create(ANode.prototype, {
                         'components of type `' + componentName +
                         '`. There can only be one component of this type per entity.');
       }
-      component = this.components[attrName] = new COMPONENTS[componentName].Component(
-        this, data, componentId);
+      component = new COMPONENTS[componentName].Component(this, data, componentId);
       if (this.isPlaying) { component.play(); }
 
       // Components are reflected in the DOM as attributes but the state is not shown
@@ -373,7 +338,7 @@ var proto = Object.create(ANode.prototype, {
       // the component with the empty string.
       if (!this.hasAttribute(attrName)) {
         component.justInitialized = true;
-        HTMLElement.prototype.setAttribute.call(this, attrName, '');
+        window.HTMLElement.prototype.setAttribute.call(this, attrName, '');
       }
 
       debug('Component initialized: %s', attrName);
@@ -391,6 +356,7 @@ var proto = Object.create(ANode.prototype, {
       var self = this;
       var component = COMPONENTS[name];
       var dependencies;
+      var i;
 
       // Not a component.
       if (!component) { return; }
@@ -401,37 +367,46 @@ var proto = Object.create(ANode.prototype, {
       if (!dependencies) { return; }
 
       // Initialize dependencies.
-      dependencies.forEach(function initializeDependency (componentName) {
+      for (i = 0; i < dependencies.length; i++) {
         // Call getAttribute to initialize the data from the DOM.
         self.initComponent(
-          componentName,
-          HTMLElement.prototype.getAttribute.call(self, componentName) || undefined,
+          dependencies[i],
+          window.HTMLElement.prototype.getAttribute.call(self, dependencies[i]) || undefined,
           true
         );
-      });
+      }
     }
   },
 
   removeComponent: {
-    value: function (name) {
+    value: function (name, destroy) {
       var component;
-      var isDefault;
-      var isMixedIn;
-
-      // Don't remove default or mixed-in components.
-      isDefault = name in this.defaultComponents;
-      isMixedIn = isComponentMixedIn(name, this.mixinEls);
-      if (isDefault || isMixedIn) { return; }
 
       component = this.components[name];
+      if (!component) { return; }
+
+      // Wait for component to initialize.
+      if (!component.initialized) {
+        this.addEventListener('componentinitialized', function tryRemoveLater (evt) {
+          if (evt.detail.name !== name) { return; }
+          this.removeComponent(name, destroy);
+          this.removeEventListener('componentinitialized', tryRemoveLater);
+        });
+        return;
+      }
+
       component.pause();
       component.remove();
-      delete this.components[name];
-      this.emit('componentremoved', {
-        id: component.id,
-        name: name
-      });
-    }
+
+      // Keep component attached to entity in case of just full entity detach.
+      if (destroy) {
+        component.destroy();
+        delete this.components[name];
+      }
+
+      this.emit('componentremoved', component.evtDetail, false);
+    },
+    writable: window.debug
   },
 
   /**
@@ -444,52 +419,52 @@ var proto = Object.create(ANode.prototype, {
    */
   updateComponents: {
     value: function () {
-      var componentsToUpdate = {};
-      var extraComponents = {};
+      var data;
+      var extraComponents;
       var i;
-      var self = this;
+      var name;
+      var componentsToUpdate = this.componentsToUpdate;
 
       if (!this.hasLoaded) { return; }
 
       // Gather mixin-defined components.
-      getMixedInComponents(this).forEach(addComponent);
+      for (i = 0; i < this.mixinEls.length; i++) {
+        for (name in this.mixinEls[i].componentCache) {
+          if (isComponent(name)) { componentsToUpdate[name] = true; }
+        }
+      }
 
       // Gather from extra initial component data if defined (e.g., primitives).
       if (this.getExtraComponents) {
         extraComponents = this.getExtraComponents();
-        Object.keys(extraComponents).forEach(addComponent);
+        for (name in extraComponents) {
+          if (isComponent(name)) { componentsToUpdate[name] = true; }
+        }
       }
 
       // Gather entity-defined components.
       for (i = 0; i < this.attributes.length; ++i) {
-        addComponent(this.attributes[i].name);
+        name = this.attributes[i].name;
+        if (OBJECT3D_COMPONENTS.indexOf(name) !== -1) { continue; }
+        if (isComponent(name)) { componentsToUpdate[name] = true; }
       }
 
-      // Initialze or update default components first.
-      Object.keys(this.defaultComponents).forEach(doUpdateComponent);
+      // object3D components first (position, rotation, scale, visible).
+      for (i = 0; i < OBJECT3D_COMPONENTS.length; i++) {
+        name = OBJECT3D_COMPONENTS[i];
+        if (!this.hasAttribute(name)) { continue; }
+        this.updateComponent(name, this.getDOMAttribute(name));
+      }
 
       // Initialize or update rest of components.
-      Object.keys(componentsToUpdate).forEach(doUpdateComponent);
-
-      /**
-       * Add component to the list to initialize or update.
-       */
-      function addComponent (componentName) {
-        var name = componentName.split(MULTIPLE_COMPONENT_DELIMITER)[0];
-        if (!COMPONENTS[name]) { return; }
-        componentsToUpdate[componentName] = true;
-      }
-
-      /**
-       * Get component data and initialize or update component.
-       */
-      function doUpdateComponent (name) {
-        // Build defined component data.
-        var data = mergeComponentData(self.getDOMAttribute(name), extraComponents[name]);
+      for (name in componentsToUpdate) {
+        data = mergeComponentData(this.getDOMAttribute(name),
+                                  extraComponents && extraComponents[name]);
+        this.updateComponent(name, data);
         delete componentsToUpdate[name];
-        self.updateComponent(name, data);
       }
-    }
+    },
+    writable: window.debug
   },
 
   /**
@@ -498,42 +473,26 @@ var proto = Object.create(ANode.prototype, {
    * When initializing, we set the component on `this.components`.
    *
    * @param {string} attr - Component name.
-   * @param {object} attrValue - The value of the DOM attribute.
+   * @param {object} attrValue - Value of the DOM attribute.
+   * @param {boolean} clobber - If new attrValue completely replaces previous properties.
    */
   updateComponent: {
-    value: function (attr, attrValue) {
+    value: function (attr, attrValue, clobber) {
       var component = this.components[attr];
-      var isDefault = attr in this.defaultComponents;
+
       if (component) {
-        if (attrValue === null && !isDefault) {
-          this.removeComponent(attr);
+        // Remove component.
+        if (attrValue === null && !checkComponentDefined(this, attr)) {
+          this.removeComponent(attr, true);
           return;
         }
         // Component already initialized. Update component.
-        component.updateProperties(attrValue);
+        component.updateProperties(attrValue, clobber);
         return;
       }
+
       // Component not yet initialized. Initialize component.
       this.initComponent(attr, attrValue, false);
-    }
-  },
-
-  /**
-   * Updates one property of the component
-   *
-   * @param {string} name - Component name
-   * @param {string} property - Component property name
-   * @param {any} propertyValue - New property value
-   */
-  updateComponentProperty: {
-    value: function (name, property, propertyValue) {
-      var component = this.components[name];
-      // Cached attribute value
-      var attrValue = component && component.attrValue;
-      // Copy cached value
-      var componentObj = attrValue ? utils.extend({}, attrValue) : {};
-      componentObj[property] = propertyValue;
-      this.updateComponent(name, componentObj);
     }
   },
 
@@ -551,9 +510,7 @@ var proto = Object.create(ANode.prototype, {
 
       // Remove component.
       if (component && propertyName === undefined) {
-        this.setEntityAttribute(attr, undefined, null);
-        // Do not remove the component from the DOM if default component.
-        if (this.components[attr]) { return; }
+        this.removeComponent(attr, true);
       }
 
       // Reset component property value.
@@ -562,7 +519,12 @@ var proto = Object.create(ANode.prototype, {
         return;
       }
 
-      HTMLElement.prototype.removeAttribute.call(this, attr);
+      // Remove mixins.
+      if (attr === 'mixin') {
+        this.mixinUpdate('');
+      }
+
+      window.HTMLElement.prototype.removeAttribute.call(this, attr);
     }
   },
 
@@ -572,22 +534,20 @@ var proto = Object.create(ANode.prototype, {
    */
   play: {
     value: function () {
-      var components = this.components;
-      var componentKeys = Object.keys(components);
+      var entities;
+      var i;
+      var key;
 
       // Already playing.
       if (this.isPlaying || !this.hasLoaded) { return; }
       this.isPlaying = true;
 
       // Wake up all components.
-      componentKeys.forEach(function playComponent (key) {
-        components[key].play();
-      });
+      for (key in this.components) { this.components[key].play(); }
 
       // Tell all child entities to play.
-      this.getChildEntities().forEach(function play (entity) {
-        entity.play();
-      });
+      entities = this.getChildEntities();
+      for (i = 0; i < entities.length; i++) { entities[i].play(); }
 
       this.emit('play');
     },
@@ -600,21 +560,19 @@ var proto = Object.create(ANode.prototype, {
    */
   pause: {
     value: function () {
-      var components = this.components;
-      var componentKeys = Object.keys(components);
+      var entities;
+      var i;
+      var key;
 
       if (!this.isPlaying) { return; }
       this.isPlaying = false;
 
       // Sleep all components.
-      componentKeys.forEach(function pauseComponent (key) {
-        components[key].pause();
-      });
+      for (key in this.components) { this.components[key].pause(); }
 
       // Tell all child entities to pause.
-      this.getChildEntities().forEach(function pause (obj) {
-        obj.pause();
-      });
+      entities = this.getChildEntities();
+      for (i = 0; i < entities.length; i++) { entities[i].pause(); }
 
       this.emit('pause');
     },
@@ -635,18 +593,74 @@ var proto = Object.create(ANode.prototype, {
         return;
       }
       if (attr === 'mixin') {
+        // Ignore if `<a-node>` code is just updating computed mixin in the DOM.
+        if (newVal === this.computedMixinStr) { return; }
         this.mixinUpdate(newVal, oldVal);
-        return;
       }
     }
   },
 
+  /**
+   * When mixins updated, trigger init or optimized-update of relevant components.
+   */
   mixinUpdate: {
-    value: function (newMixins, oldMixins) {
-      oldMixins = oldMixins || this.getAttribute('mixin');
-      this.updateStateMixins(newMixins, oldMixins);
-      this.updateComponents();
-    }
+    value: (function () {
+      var componentsUpdated = [];
+
+      return function (newMixins, oldMixins) {
+        var component;
+        var mixinEl;
+        var mixinIds;
+        var i;
+        var self = this;
+
+        if (!this.hasLoaded) {
+          this.addEventListener('loaded', function () {
+            self.mixinUpdate(newMixins, oldMixins);
+          }, ONCE);
+          return;
+        }
+
+        oldMixins = oldMixins || this.getAttribute('mixin');
+        mixinIds = this.updateMixins(newMixins, oldMixins);
+
+        // Loop over current mixins.
+        componentsUpdated.length = 0;
+        for (i = 0; i < this.mixinEls.length; i++) {
+          for (component in this.mixinEls[i].componentCache) {
+            if (componentsUpdated.indexOf(component) === -1) {
+              if (this.components[component]) {
+                // Update. Just rebuild data.
+                this.components[component].handleMixinUpdate();
+              } else {
+                // Init. buildData will gather mixin values.
+                this.initComponent(component, null);
+              }
+              componentsUpdated.push(component);
+            }
+          }
+        }
+
+        // Loop over old mixins to call for data rebuild.
+        for (i = 0; i < mixinIds.oldMixinIds.length; i++) {
+          mixinEl = document.getElementById(mixinIds.oldMixinIds[i]);
+          if (!mixinEl) { continue; }
+          for (component in mixinEl.componentCache) {
+            if (componentsUpdated.indexOf(component) === -1) {
+              if (this.components[component]) {
+                if (this.getDOMAttribute(component)) {
+                  // Update component if explicitly defined.
+                  this.components[component].handleMixinUpdate();
+                } else {
+                  // Remove component if not explicitly defined.
+                  this.removeComponent(component, true);
+                }
+              }
+            }
+          }
+        }
+      };
+    })()
   },
 
   /**
@@ -658,75 +672,65 @@ var proto = Object.create(ANode.prototype, {
    * 4. Set a value for a single-property component, mixin, or normal HTML attribute.
    *
    * @param {string} attrName - Component or attribute name.
-   * @param {string|object} arg1 - Can be a property name or object of properties.
-   * @param {string|bool} arg2 - Can be a value, or boolean indicating whether to update or
-   *   replace.
+   * @param {*} arg1 - Can be a value, property name, CSS-style property string, or
+   *   object of properties.
+   * @param {*|bool} arg2 - If arg1 is a property name, this should be a value. Otherwise,
+   *   it is a boolean indicating whether to clobber previous values (defaults to false).
    */
   setAttribute: {
-    value: function (attrName, arg1, arg2) {
-      var componentName;
-      var isDebugMode;
+    value: (function () {
+      var singlePropUpdate = {};
 
-      // Determine which type of setAttribute to call based on the types of the arguments.
-      componentName = attrName.split(MULTIPLE_COMPONENT_DELIMITER)[0];
-      if (COMPONENTS[componentName]) {
-        if (typeof arg1 === 'string' && typeof arg2 !== 'undefined') {
-          singlePropertyUpdate(this, attrName, arg1, arg2);
-        } else if (typeof arg1 === 'object' && arg2 === true) {
-          multiPropertyClobber(this, attrName, arg1);
-        } else {
-          componentUpdate(this, attrName, arg1);
+      return function (attrName, arg1, arg2) {
+        var newAttrValue;
+        var clobber;
+        var componentName;
+        var delimiterIndex;
+        var isDebugMode;
+        var key;
+
+        delimiterIndex = attrName.indexOf(MULTIPLE_COMPONENT_DELIMITER);
+        componentName = delimiterIndex > 0 ? attrName.substring(0, delimiterIndex) : attrName;
+
+        // Not a component. Normal set attribute.
+        if (!COMPONENTS[componentName]) {
+          if (attrName === 'mixin') { this.mixinUpdate(arg1); }
+          ANode.prototype.setAttribute.call(this, attrName, arg1);
+          return;
         }
+
+        // Initialize component first if not yet initialized.
+        if (!this.components[attrName] && this.hasAttribute(attrName)) {
+          this.updateComponent(
+            attrName,
+            window.HTMLElement.prototype.getAttribute.call(this, attrName));
+        }
+
+        // Determine new attributes from the arguments
+        if (typeof arg2 !== 'undefined' &&
+            typeof arg1 === 'string' &&
+            arg1.length > 0 &&
+            typeof utils.styleParser.parse(arg1) === 'string') {
+          // Update a single property of a multi-property component
+          for (key in singlePropUpdate) { delete singlePropUpdate[key]; }
+          newAttrValue = singlePropUpdate;
+          newAttrValue[arg1] = arg2;
+          clobber = false;
+        } else {
+          // Update with a value, object, or CSS-style property string, with the possiblity
+          // of clobbering previous values.
+          newAttrValue = arg1;
+          clobber = (arg2 === true);
+        }
+
+        // Update component
+        this.updateComponent(attrName, newAttrValue, clobber);
 
         // In debug mode, write component data up to the DOM.
         isDebugMode = this.sceneEl && this.sceneEl.getAttribute('debug');
         if (isDebugMode) { this.components[attrName].flushToDOM(); }
-        return;
-      } else {
-        normalSetAttribute(this, attrName, arg1);
-      }
-
-      /**
-       * Just update one of the component properties.
-       * >> setAttribute('foo', 'bar', 'baz')
-       */
-      function singlePropertyUpdate (el, componentName, propName, propertyValue) {
-        el.updateComponentProperty(componentName, propName, propertyValue);
-      }
-
-      /**
-       * Just update multiple component properties at once for a multi-property component.
-       * >> setAttribute('foo', {bar: 'baz'})
-       */
-      function componentUpdate (el, componentName, propValue) {
-        var component = el.components[componentName];
-        if (component && typeof propValue === 'object') {
-          // Extend existing component attribute value.
-          el.updateComponent(
-            componentName,
-            utils.extendDeep(utils.extendDeep({}, component.attrValue), propValue));
-        } else {
-          el.updateComponent(componentName, propValue);
-        }
-      }
-
-      /**
-       * Pass in complete data set for a multi-property component.
-       * >> setAttribute('foo', {bar: 'baz'}, true)
-       */
-      function multiPropertyClobber (el, componentName, propObject) {
-        el.updateComponent(componentName, propObject);
-      }
-
-      /**
-       * Just update one of the component properties.
-       * >> setAttribute('id', 'myEntity')
-       */
-      function normalSetAttribute (el, attrName, value) {
-        ANode.prototype.setAttribute.call(el, attrName, value);
-        if (attrName === 'mixin') { el.mixinUpdate(value); }
-      }
-    },
+      };
+    })(),
     writable: window.debug
   },
 
@@ -738,15 +742,15 @@ var proto = Object.create(ANode.prototype, {
   flushToDOM: {
     value: function (recursive) {
       var components = this.components;
-      var defaultComponents = this.defaultComponents;
       var child;
       var children = this.children;
       var i;
+      var key;
 
       // Flush entity's components to DOM.
-      Object.keys(components).forEach(function flushComponent (componentName) {
-        components[componentName].flushToDOM(componentName in defaultComponents);
-      });
+      for (key in components) {
+        components[key].flushToDOM();
+      }
 
       // Recurse.
       if (!recursive) { return; }
@@ -770,25 +774,16 @@ var proto = Object.create(ANode.prototype, {
   getAttribute: {
     value: function (attr) {
       // If component, return component data.
-      var component = this.components[attr];
-      if (component) { return component.getData(); }
-      return HTMLElement.prototype.getAttribute.call(this, attr);
+      var component;
+      if (attr === 'position') { return this.object3D.position; }
+      if (attr === 'rotation') { return getRotation(this); }
+      if (attr === 'scale') { return this.object3D.scale; }
+      if (attr === 'visible') { return this.object3D.visible; }
+      component = this.components[attr];
+      if (component) { return component.data; }
+      return window.HTMLElement.prototype.getAttribute.call(this, attr);
     },
     writable: window.debug
-  },
-
-  /**
-   * `getAttribute` used to be `getDOMAttribute` and `getComputedAttribute` used to be
-   * what `getAttribute` is now. Now legacy code.
-   *
-   * @param {string} attr
-   * @returns {object|string} Object if component, else string.
-   */
-  getComputedAttribute: {
-    value: function (attr) {
-      warn('`getComputedAttribute` is deprecated. Use `getAttribute` instead.');
-      return this.getAttribute(attr);
-    }
   },
 
   /**
@@ -806,7 +801,7 @@ var proto = Object.create(ANode.prototype, {
       // If cached value exists, return partial component data.
       var component = this.components[attr];
       if (component) { return component.attrValue; }
-      return HTMLElement.prototype.getAttribute.call(this, attr);
+      return window.HTMLElement.prototype.getAttribute.call(this, attr);
     },
     writable: window.debug
   },
@@ -815,8 +810,7 @@ var proto = Object.create(ANode.prototype, {
     value: function (state) {
       if (this.is(state)) { return; }
       this.states.push(state);
-      this.mapStateMixins(state, bind(this.registerMixin, this));
-      this.emit('stateadded', {state: state});
+      this.emit('stateadded', state);
     }
   },
 
@@ -825,8 +819,7 @@ var proto = Object.create(ANode.prototype, {
       var stateIndex = this.states.indexOf(state);
       if (stateIndex === -1) { return; }
       this.states.splice(stateIndex, 1);
-      this.mapStateMixins(state, bind(this.unregisterMixin, this));
-      this.emit('stateremoved', {state: state});
+      this.emit('stateremoved', state);
     }
   },
 
@@ -837,6 +830,31 @@ var proto = Object.create(ANode.prototype, {
   is: {
     value: function (state) {
       return this.states.indexOf(state) !== -1;
+    }
+  },
+
+  /**
+   * Open Inspector to this entity.
+   */
+  inspect: {
+    value: function () {
+      this.sceneEl.components.inspector.openInspector(this);
+    }
+  },
+
+  /**
+   * Clean up memory and return memory to object pools.
+   */
+  destroy: {
+    value: function () {
+      var key;
+      if (this.parentNode) {
+        warn('Entity can only be destroyed if detached from scenegraph.');
+        return;
+      }
+      for (key in this.components) {
+        this.components[key].destroy();
+      }
     }
   }
 });
@@ -850,24 +868,10 @@ var proto = Object.create(ANode.prototype, {
  * @returns {boolean}
  */
 function checkComponentDefined (el, name) {
-  // Check if default components contain the component.
-  if (el.defaultComponents[name] !== undefined) { return true; }
-
   // Check if element contains the component.
   if (el.components[name] && el.components[name].attrValue) { return true; }
 
   return isComponentMixedIn(name, el.mixinEls);
-}
-
-function getMixedInComponents (entityEl) {
-  var components = [];
-  entityEl.mixinEls.forEach(function getMixedComponents (mixinEl) {
-    Object.keys(mixinEl.componentCache).forEach(addComponent);
-    function addComponent (key) {
-      components.push(key);
-    }
-  });
-  return components;
 }
 
 /**
@@ -906,7 +910,23 @@ function mergeComponentData (attrValue, extraData) {
   return attrValue || extraData;
 }
 
-AEntity = registerElement('a-entity', {
-  prototype: proto
-});
+function isComponent (componentName) {
+  if (componentName.indexOf(MULTIPLE_COMPONENT_DELIMITER) !== -1) {
+    componentName = utils.split(componentName, MULTIPLE_COMPONENT_DELIMITER)[0];
+  }
+  if (!COMPONENTS[componentName]) { return false; }
+  return true;
+}
+
+function getRotation (entityEl) {
+  var radToDeg = THREE.Math.radToDeg;
+  var rotation = entityEl.object3D.rotation;
+  var rotationObj = entityEl.rotationObj;
+  rotationObj.x = radToDeg(rotation.x);
+  rotationObj.y = radToDeg(rotation.y);
+  rotationObj.z = radToDeg(rotation.z);
+  return rotationObj;
+}
+
+AEntity = registerElement('a-entity', {prototype: proto});
 module.exports = AEntity;

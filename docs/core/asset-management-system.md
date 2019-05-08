@@ -4,10 +4,14 @@ type: core
 layout: docs
 parent_section: core
 order: 9
+source_code: src/core/a-assets.js
+examples: []
 ---
 
 A-Frame has an asset management system that allows us to place our assets in
-one place and to preload and cache assets for better performance.
+one place and to preload and cache assets for better performance. Note the asset
+management system is purely for **preloading assets**. Assets that are set on
+entities at runtime could be done via direct URLs to the assets.
 
 Games and rich 3D experiences traditionally preload their assets, such as
 models or textures, before rendering their scenes. This makes sure that assets
@@ -39,13 +43,13 @@ entities using selectors:
     <a-asset-item id="horse-obj" src="horse.obj"></a-asset-item>
     <a-asset-item id="horse-mtl" src="horse.mtl"></a-asset-item>
     <a-mixin id="giant" scale="5 5 5"></a-mixin>
-    <audio id="neigh" src="neigh.mp3">
+    <audio id="neigh" src="neigh.mp3"></audio>
     <img id="advertisement" src="ad.png">
-    <video id="kentucky-derby" src="derby.mp4">
+    <video id="kentucky-derby" src="derby.mp4"></video>
   </a-assets>
 
   <!-- Scene. -->
-  <a-plane src="advertisement"></a-plane>
+  <a-plane src="#advertisement"></a-plane>
   <a-sound src="#neigh"></a-sound>
   <a-entity geometry="primitive: plane" material="src: #kentucky-derby"></a-entity>
   <a-entity mixin="giant" obj-model="obj: #horse-obj; mtl: #horse-mtl"></a-entity>
@@ -66,12 +70,10 @@ headers][cors] if the asset is on a different domain. Otherwise, we'd have
 to host assets on the same origin as the scene.
 
 [ghpages]: https://pages.github.com/
-[uploader]: https://cdn.aframe.io
 
-For some options, [GitHub Pages][ghpages] serves everything with CORS headers.
-We recommend GitHub Pages as a simple deployment platform.  Or you could also
-upload assets using the [A-Frame + Uploadcare Uploader][uploader], a service
-that serves files with CORS headers set.
+For other options, [GitHub Pages][ghpages] serves everything with CORS headers.
+We recommend GitHub Pages as a simple deployment platform. Or another service
+that serves files with CORS headers set (such as Amazon S3).
 
 [corsimage]: https://developer.mozilla.org/docs/Web/HTML/CORS_enabled_image
 
@@ -88,12 +90,12 @@ set `preload="auto"`:
 <a-scene>
   <a-assets>
     <!-- These will not block. -->
-    <audio src="blockus.mp3">
-    <video src="loadofblocks.mp4">
+    <audio src="blockus.mp3"></audio>
+    <video src="loadofblocks.mp4"></video>
 
     <!-- These will block. -->
-    <audio src="blocky.mp3" autoplay>
-    <video src="blockiscooking.mp4" preload="auto">
+    <audio src="blocky.mp3" autoplay></audio>
+    <video src="blockiscooking.mp4" preload="auto"></video>
   </a-assets>
 </a-scene>
 ```
@@ -114,7 +116,7 @@ network is slow.
   <a-assets timeout="10000">
     <!-- You got until the count of 10 to load else the show will go on without you. -->
     <img src="bigimage.png">
-  </a-asset>
+  </a-assets>
 </a-scene>
 ```
 
@@ -135,7 +137,7 @@ the `loaded` event when they say they have finished loading.
 ### `<a-asset-item>`
 
 `<a-asset-item>` invokes the [three.js
-FileLoader](https://threejs.org/docs/#Reference/Loaders/FileLoader).  We can use
+FileLoader](https://threejs.org/docs/#api/en/loaders/FileLoader).  We can use
 `<a-asset-item>` for any file type. When finished, it will set its `data`
 member with the text response.
 
@@ -168,6 +170,16 @@ particular events on these elements; noted here for convenience:
 
 A-Frame uses these progress events, comparing how much time the browser
 buffered with the duration of the asset, to detect when the asset becomes loaded.
+
+## Specifying Response Type
+
+Content fetched by `<a-asset-item>` will be returned as plain text. If we want
+to use a different response type such as `arraybuffer`, use `<a-asset-item>`'s
+`response-type` attribute:
+
+```html
+<a-asset-item response-type="arraybuffer" src="model.gltf"></a-asset-item>
+```
 
 ## How It Works Internally
 

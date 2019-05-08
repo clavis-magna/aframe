@@ -2,10 +2,22 @@
 title: geometry
 type: components
 layout: docs
-
 parent_section: docs
 section_title: Components
 section_order: 4
+source_code: src/components/geometry.js
+examples:
+ - title: Creating Shapes
+   src: https://glitch.com/edit/#!/ex-2-geometry?path=index.html:1:0
+ - title: Texture on Shapes
+   src: https://glitch.com/edit/#!/ex-2a-texture-on-shape?path=index.html:1:0
+ - title: Shape as Entity
+   src: https://glitch.com/edit/#!/ex-2b-shape-as-entity?path=index.html:1:0
+ - title: Animating Shapes
+   src: https://glitch.com/edit/#!/ex-2c-animating-shapes?path=index.html:1:0
+ - title: Animating Shapes with Components
+   src: https://glitch.com/edit/#!/ex-2d-animating-shapes-with-components?path=index.html:1:0
+
 ---
 
 The geometry component provides a basic shape for an entity. The `primitive`
@@ -22,27 +34,8 @@ Every geometry type will have these properties:
 | Property  | Description                                                                                                                          | Default Value |
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | buffer    | Transform geometry into a BufferGeometry to reduce memory usage at the cost of being harder to manipulate.                           | true          |
-| mergeTo   | A selector to an entity to merge the entity's geometry to.                                                                           | None          |
 | primitive | Name of a geometry (e.g., one of the geometries listed below). Determines the geometry type and what other properties are available. | box           |
 | skipCache | Disable retrieving the shared geometry object from the cache.                                                                        | false         |
-
-### `mergeTo`
-
-Merging geometries reduces the number of draw calls, greatly improving
-performance under certain circumstances. Merged geometries will inherit the
-material of the target geometry. Thus, it's useful when we have entities that
-share the same material.
-
-Once merged, we can no longer manipulate the individual geometry independently.
-
-For geometry merging to be able to work, we will have to turn off `buffer` and
-turn on `skipCache`.
-
-```html
-<a-entity id="target" geometry="primitive: box; buffer: false; skipCache: true" material="color: red"></a-entity>
-<a-entity geometry="primitive: box; buffer: false; skipCache: true; mergeTo: #target"
-          material="color: red" position="1 2 3"></a-entity>
-```
 
 ## Built-in Geometries
 
@@ -54,11 +47,14 @@ The box geometry defines boxes (i.e., any quadilateral, not just cubes).
 <a-entity geometry="primitive: box; width: 1; height: 1; depth: 1"></a-entity>
 ```
 
-| Property | Description                                    | Default Value |
-|----------|------------------------------------------------|---------------|
-| width    | Width (in meters) of the sides on the X axis.  | 1             |
-| height   | Height (in meters) of the sides on the Y axis. | 1             |
-| depth    | Depth (in meters) of the sides on the Z axis.  | 1             |
+| Property       | Description                                    | Default Value |
+|----------------|------------------------------------------------|---------------|
+| width          | Width (in meters) of the sides on the X axis.  | 1             |
+| height         | Height (in meters) of the sides on the Y axis. | 1             |
+| depth          | Depth (in meters) of the sides on the Z axis.  | 1             |
+| segmentsDepth  | Number of segmented faces on the z-axis        | 1             |
+| segmentsHeight | Number of segmented faces on the y-axis        | 1             |
+| segmentsWidth  | Number of segmented faces on the x-axis        | 1             |
 
 ### `circle`
 
@@ -130,7 +126,7 @@ need a double-sided material to render properly:
 <a-entity geometry="primitive: cylinder; openEnded: true" material="side: double"></a-entity>
 ```
 
-We can create a cured surfaces by specifying the arc via `thetaLength` such
+We can create a curved surfaces by specifying the arc via `thetaLength` such
 that the cylinder doesn't curve all the way around, making the cylinder
 open-ended, and then making the material double-sided:
 
@@ -192,15 +188,17 @@ the `material` component.
 <a-entity geometry="primitive: plane; height: 10; width: 10" material="side: double"></a-entity>
 ```
 
-| Property | Description              | Default Value |
-|----------|--------------------------|---------------|
-| width    | Width along the X axis.  | 1             |
-| height   | Height along the Y axis. | 1             |
+| Property       | Description                             | Default Value |
+|----------------|-----------------------------------------|---------------|
+| width          | Width along the X axis.                 | 1             |
+| height         | Height along the Y axis.                | 1             |
+| segmentsHeight | Number of segmented faces on the y-axis | 1             |
+| segmentsWidth  | Number of segmented faces on the x-axis | 1             |
 
 ### `ring`
 
 The ring geometry creates a flat ring, like a [CD][cd]. Because the ring is
-flat, A-Frame will only render a single face of the ring we specify `side:
+flat, A-Frame will only render a single face of the ring unless we specify `side:
 double` the `material` component.
 
 ```html
@@ -290,6 +288,23 @@ not coprime the result will be a torus link:
 | p               | How many times the geometry winds around its axis of rotational symmetry.                                       | 2             |
 | q               | How many times the geometry winds around a circle in the interior of the torus.                                 | 3             |
 
+### `triangle`
+
+The triangle geometry creates a flat two-dimensional triangle. Because triangles are flat,
+A-Frame will render only a single face, which is the one with `vertexA`, `vertexB`, and
+`vertexC` appear in counterclockwise order on the screen, unless we specify `side: double` on
+the `material` component.
+
+```html
+<a-entity geometry="primitive: triangle" material="side: double"></a-entity>
+```
+
+| Property | Description                                | Default Value |
+|----------|--------------------------------------------|---------------|
+| vertexA  | Coordinates of one of the three vertices   |    0  0.5 0   |
+| vertexB  | Coordinates of one of the three vertices   | -0.5 -0.5 0   |
+| vertexC  | Coordinates of one of the three vertices   |  0.5 -0.5 0   |
+
 ## Register a Custom Geometry
 
 We can register our own geometries using `AFRAME.registerGeometry` and creating
@@ -317,7 +332,7 @@ AFRAME.registerGeometry('box', {
 Like with registering components, we provide a name, a
 [schema][component-schema] that will expose the properties of the geometry, and
 lifecycle methods. Then we need to create the geometry and set on
-`this.geometry` through the `init` and `update` lifecycle methods.
+`this.geometry` through the `init` lifecycle method.
 
 When a geometry component sets its `primitive` property to the custom geometry
 name, we can set the properties of the custom geometry on the geometry
@@ -333,14 +348,15 @@ AFRAME.registerGeometry('example', {
 
   init: function (data) {
     var geometry = new THREE.Geometry();
-    geometry.vertices.push.call(
-      geometry.vertices,
-      data.vertices.map(function (vertex) {
-        var points = vertex.split(' ').map(parseInt);
+    geometry.vertices = data.vertices.map(function (vertex) {
+        var points = vertex.split(' ').map(function(x){return parseInt(x);});
         return new THREE.Vector3(points[0], points[1], points[2]);
-      });
-    );
+    });
+    geometry.computeBoundingBox();
     geometry.faces.push(new THREE.Face3(0, 1, 2));
+    geometry.mergeVertices();
+    geometry.computeFaceNormals();
+    geometry.computeVertexNormals();
     this.geometry = geometry;
   }
 });
@@ -349,10 +365,10 @@ AFRAME.registerGeometry('example', {
 We can then use that custom geometry in HTML:
 
 ```html
-<a-entity geometry="primitive: example; vertices: 1 1 1, 2 2 2, 3 3 3"></a-entity>
+<a-entity geometry="primitive: example; vertices: 1 1 -3, 3 1 -3, 2 2 -3"></a-entity>
 ```
 
 [cd]: https://en.wikipedia.org/wiki/Compact_disc
 [component-schema]: ../core/component.md#schema
 [prisms-wiki]: https://en.wikipedia.org/wiki/Prism_%28geometry%29
-[three-geometry]: http://threejs.org/docs/#Reference/Core/Geometry
+[three-geometry]: https://threejs.org/docs/#api/core/Geometry

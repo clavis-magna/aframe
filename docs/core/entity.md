@@ -1,13 +1,16 @@
 ---
 title: Entity
+section_title: Core API
 type: core
 layout: docs
-parent_section: core
-order: 2
+parent_section: docs
+order: 1
+section_order: 3
+source_code: src/core/a-entity.js
 ---
 
-[ecs]: ./index.md
-               .
+[ecs]: ../introduction/entity-component-system.md
+
 A-Frame represents an entity via the `<a-entity>` element. As defined in the
 [entity-component-system pattern][ecs], entities are placeholder objects to
 which we plug in components to provide them appearance, behavior, and
@@ -88,6 +91,12 @@ Or if a component exposes an API, we can call its methods:
 document.querySelector('a-entity[sound]').components.sound.pause();
 ```
 
+### `hasLoaded`
+
+Whether the entity has attached and initialized all of its components. Though
+the best way to ensure code is run after the entity is ready is to place code
+within a component.
+
 ### `isPlaying`
 
 Whether the entity is active and playing. If we pause the entity , then
@@ -127,8 +136,8 @@ attached, `object3DMap` might look like:
 }
 ```
 
-We can manage an entity's set of `THREE.Object3D`s by using `getOrCreateObject3D`,
-`setObject3D`, and `removeObject3D`.
+We can manage an entity's set of `THREE.Object3D`s by using `setObject3D` and
+`removeObject3D`.
 
 ### `sceneEl`
 
@@ -150,7 +159,7 @@ event, and we can check the state can for existence using `.is`:
 
 ```js
 entity.addEventListener('stateadded', function (evt) {
-  if (evt.detail.state === 'selected') {
+  if (evt.detail === 'selected') {
     console.log('Entity now selected!');
   }
 });
@@ -161,15 +170,13 @@ entity.is('selected');  // >> true
 
 ### `emit (name, detail, bubbles)`
 
-[animation-begin]: ./animations.md#begin
+[animation]: ../components/animation.md
 
 `emit` emits a custom DOM event on the entity. For example, we can emit an event to
-[trigger an animation][animation-begin]:
+[trigger an animation][animation]:
 
 ```js
-// <a-entity>
-//   <a-animation attribute="rotation" begin="rotate" to="0 360 0"></a-animation>
-// </a-entity>
+// <a-entity animation="property: rotation; to: 0 360 0; startEvents: rotate">
 entity.emit('rotate');
 ```
 
@@ -201,7 +208,7 @@ Read more about [component-to-DOM serialization][component-to-dom-serialization]
 // <a-entity geometry="primitive: box; width: 3">
 
 entity.getAttribute('geometry');
-// >> {primitive: "box", depth: 2, height: 2, translate: "0 0 0", width: 3, ...}
+// >> {primitive: "box", depth: 2, height: 2, width: 3, ...}
 
 entity.getAttribute('geometry').primitive;
 // >> "box"
@@ -258,24 +265,8 @@ entity.getDOMAttribute('position');
 AFRAME.registerComponent('example-mesh', {
   init: function () {
     var el = this.el;
-    el.getOrCreateObject3D('mesh', THREE.Mesh);
+    el.setObject3D('mesh', new THREE.Mesh());
     el.getObject3D('mesh');  // Returns THREE.Mesh that was just created.
-  }
-});
-```
-
-### `getOrCreateObject3D (type, Constructor)`
-
-If the entity does not have a `THREE.Object3D` registered under `type`,
-`getOrCreateObject3D` will register an instantiated `THREE.Object3D` using the
-passed `Constructor`. If the entity does have an `THREE.Object3D` registered
-under `type`, `getOrCreateObject3D` will act as `getObject3D`:
-
-```js
-AFRAME.registerComponent('example-geometry', {
-  update: function () {
-    var mesh = this.el.getOrCreateObject3D('mesh', THREE.Mesh);
-    mesh.geometry = new THREE.Geometry();
   }
 });
 ```
@@ -311,16 +302,16 @@ entity.play();
 
 For example, the [sound component][sound] on play will begin playing the sound.
 
-### `setAttribute (attr, value, componentAttrValue)`
+### `setAttribute (componentName, value, [propertyValue | clobber])`
 
-If `attr` is not the name of a registered component or the component is a
+If `componentName` is not the name of a registered component or the component is a
 single-property component, `setAttribute` behaves as it normally would:
 
 ```js
 entity.setAttribute('visible', false);
 ```
 
-Though if `attr` is the name of a registered component, it may handle special
+Though if `componentName` is the name of a registered component, it may handle special
 parsing for the value. For example, the [position component][position] is a
 single-property component, but its property type parser allows it to take an
 object:
@@ -329,14 +320,19 @@ object:
 entity.setAttribute('position', { x: 1, y: 2, z: 3 });
 ```
 
-#### Putting Multi-Property Component Data
+### `destroy ()`
 
-To set or replace component data for a multi-property component, we can pass
-the name of a registered component as the `attr`, and pass an object of
-properties as the `value`:
+Clean up memory related to the entity such as clearing all components and their data.
+
+#### Updating Multi-Property Component Data
+
+To update component data for a multi-property component, we can pass the name
+of a registered component as the `componentName`, and pass an object of
+properties as the `value`. A string is also acceptable (e.g., `type: spot;
+distance: 30`), but objects will save A-Frame some work in parsing:
 
 ```js
-// All previous properties for the light component will be removed and overwritten.
+// Only the properties passed in the object will be overwritten.
 entity.setAttribute('light', {
   type: 'spot',
   distance: 30,
@@ -344,10 +340,8 @@ entity.setAttribute('light', {
 });
 ```
 
-#### Updating Multi-Property Component Data
-
-To update individual properties for a multi-property component, we can pass the
-name of registered component as the `attr`, a property name as the second
+Or to update individual properties for a multi-property component, we can pass
+the name of registered component as the `componentName`, a property name as the second
 argument, and the property value to set as the third argument:
 
 ```js
@@ -355,11 +349,33 @@ argument, and the property value to set as the third argument:
 entity.setAttribute('material', 'color', 'crimson');
 ```
 
+Note that array property types behave uniquely:
+
+- Arrays are mutable. They are assigned by reference so changes to arrays will
+  be visible by the component.
+- Updates to array type properties will not trigger the component's `update` method
+  nor emit events.
+
+#### Putting Multi-Property Component Data
+
+If `true` is passed as the third argument to `.setAttribute`, then
+non-specified properties will be reset and clobbered:
+
+```js
+// All previous properties for the light component will be removed and overwritten.
+entity.setAttribute('light', {
+  type: 'spot',
+  distance: 30,
+  intensity: 2.0
+}, true);
+```
+
 ### `setObject3D (type, obj)`
 
 `setObject3D` will register the passed `obj`, a `THREE.Object3D`, as `type`
 under the entity's `object3DMap`. A-Frame adds `obj` as a child of the entity's
-root `object3D`.
+root `object3D`. An entity will emit the `object3dset` event with `type` event
+detail when `setObject3D` is called.
 
 ```js
 AFRAME.registerComponent('example-orthogonal-camera', {
@@ -369,14 +385,14 @@ AFRAME.registerComponent('example-orthogonal-camera', {
 });
 ```
 
-### `removeAttribute (attr, propertyName)`
+### `removeAttribute (componentName, propertyName)`
 
-If `attr` is the name of a registered component, along with removing the
+If `componentName` is the name of a registered component, along with removing the
 attribute from the DOM, `removeAttribute` will also detach the component from
 the entity, invoking the component's `remove` lifecycle method.
 
 ```js
-entity.removeAttribute('goemetry');  // Detach the geometry component.
+entity.removeAttribute('geometry');  // Detach the geometry component.
 entity.removeAttribute('sound');  // Detach the sound component.
 ```
 
@@ -432,19 +448,20 @@ entity.is('selected');  // >> false
 
 ## Events
 
-| Event Name       | Description                                                         |
-|------------------|---------------------------------------------------------------------|
-| child-attached   | A child entity was attached to the entity.                          |
-| child-detached   | A child entity was detached from the entity.                        |
-| componentchanged | One of the entity's components was modified.                        |
-| componentinit    | One of the entity's components was initialized.                     |
-| componentremoved | One of the entity's components was removed.                         |
-| loaded           | The entity has attached and initialized its components.             |
-| pause            | The entity is now inactive and paused in terms of dynamic behavior. |
-| play             | The entity is now active and playing in terms of dynamic behavior.  |
-| stateadded       | The entity received a new state.                                    |
-| stateremoved     | The entity no longer has a certain state.                           |
-| schemachanged    | The schema of a component was changed.                              |
+| Event Name           | Description                                                                                                                                                                                                            |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| child-attached       | A child entity was attached to the entity.                                                                                                                                                                             |
+| child-detached       | A child entity was detached from the entity.                                                                                                                                                                           |
+| componentchanged     | One of the entity's components was modified. This event is throttled. Do not use this for reading position and rotation changes, rather [use a tick handler](../camera.md#reading-position-or-rotation-of-the-camera). |
+| componentinitialized | One of the entity's components was initialized.                                                                                                                                                                        |
+| componentremoved     | One of the entity's components was removed.                                                                                                                                                                            |
+| loaded               | The entity has attached and initialized its components.                                                                                                                                                                |
+| object3dset          | `THREE.Object3D` was set on entity using `setObject3D(name)`. Event detail will contain `name` used to set on the `object3DMap`.                                                                                       |
+| pause                | The entity is now inactive and paused in terms of dynamic behavior.                                                                                                                                                    |
+| play                 | The entity is now active and playing in terms of dynamic behavior.                                                                                                                                                     |
+| stateadded           | The entity received a new state.                                                                                                                                                                                       |
+| stateremoved         | The entity no longer has a certain state.                                                                                                                                                                              |
+| schemachanged        | The schema of a component was changed.                                                                                                                                                                                 |
 
 ### Event Detail
 
@@ -455,15 +472,13 @@ Below is what the event detail contains for each event:
 | child-attached       | el        | Reference to the attached child element.           |
 | componentchanged     | name      | Name of component that had its data modified.      |
 |                      | id        | ID of component that had its data modified.        |
-|                      | newData   | Component's new data, after it was modified.       |
-|                      | oldData   | Component's previous data, before it was modified. |
 | componentinitialized | name      | Name of component that was initialized.            |
 |                      | id        | ID of component that had its data modified.        |
 |                      | data      | Component data.                                    |
 | componentremoved     | name      | Name of component that was removed.                |
 |                      | id        | ID of component that was removed.                  |
-| stateadded           | state     | The state that was attached (string).              |
-| stateremoved         | state     | The state that was detached (string).              |
+| stateadded           | N/A       | The state that was attached (string).              |
+| stateremoved         | N/A       | The state that was detached (string).              |
 | schemachanged        | component | Name of component that had it's schema changed.    |
 
 #### Listening for Component Changes
@@ -473,7 +488,7 @@ We can use the `componentchanged` event to listen for changes to the entity:
 ```js
 entity.addEventListener('componentchanged', function (evt) {
   if (evt.detail.name === 'position') {
-    console.log('Entity has moved from', evt.detail.oldData, 'to', evt.detail.newData, '!');
+    console.log('Entity has moved to', evt.target.getAttribute('position'), '!');
   }
 });
 ```

@@ -3,39 +3,32 @@ var THREE = require('../lib/three');
 
 /**
  * glTF model system.
+ *
+ * Configures glTF loading options. Models using glTF compression require that a Draco decoder be
+ * provided externally.
+ *
+ * @param {string} dracoDecoderPath - Base path from which to load Draco decoder library.
  */
 module.exports.System = registerSystem('gltf-model', {
+  schema: {
+    dracoDecoderPath: {default: ''}
+  },
+
   init: function () {
-    this.models = [];
+    var path = this.data.dracoDecoderPath;
+    THREE.DRACOLoader.setDecoderPath(path);
+    this.dracoLoader = path ? new THREE.DRACOLoader() : null;
   },
 
-  /**
-   * Updates shaders for all glTF models in the system.
-   */
-  tick: function () {
-    var sceneEl = this.sceneEl;
-    if (sceneEl.hasLoaded && this.models.length) {
-      THREE.GLTFLoader.Shaders.update(sceneEl.object3D, sceneEl.camera);
-    }
+  update: function () {
+    var path;
+    if (this.dracoLoader) { return; }
+    path = this.data.dracoDecoderPath;
+    THREE.DRACOLoader.setDecoderPath(path);
+    this.dracoLoader = path ? new THREE.DRACOLoader() : null;
   },
 
-  /**
-   * Registers a glTF asset.
-   * @param {object} gltf Asset containing a scene and (optional) animations and cameras.
-   */
-  registerModel: function (gltf) {
-    this.models.push(gltf);
-  },
-
-  /**
-   * Unregisters a glTF asset.
-   * @param  {object} gltf Asset containing a scene and (optional) animations and cameras.
-   */
-  unregisterModel: function (gltf) {
-    var models = this.models;
-    var index = models.indexOf(gltf);
-    if (index >= 0) {
-      models.splice(index, 1);
-    }
+  getDRACOLoader: function () {
+    return this.dracoLoader;
   }
 });

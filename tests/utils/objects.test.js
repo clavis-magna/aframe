@@ -122,5 +122,22 @@ suite('utils.objects', function () {
       assert.ok(deepEqual({}, {}));
       assert.notOk(deepEqual({}, {a: 1}));
     });
+
+    test('can compare the same object with self reference', function () {
+      var objA = {x: 0, y: 0, z: 0, self: objA};
+      assert.ok(deepEqual(objA, objA));
+    });
+
+    test('avoid deep equal of object that are not instantiated' +
+         'with the Object constructor in order to avoid infinite loops', function () {
+      assert.notOk(deepEqual(document.createElement('a-entity'),
+                             document.createElement('a-entity')));
+    });
+
+    test('can compare if any of the arguments is undefined', function () {
+      assert.notOk(deepEqual(undefined, {a: 1, b: 2}));
+      assert.notOk(deepEqual({a: 1, b: 2}, undefined));
+      assert.ok(deepEqual(undefined, undefined));
+    });
   });
 });
