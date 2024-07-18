@@ -1,8 +1,6 @@
-/* global THREE */
+/* global THREE, MouseEvent, TouchEvent */
 var registerComponent = require('../core/component').registerComponent;
 var utils = require('../utils/');
-
-var bind = utils.bind;
 
 var EVENTS = {
   CLICK: 'click',
@@ -22,6 +20,11 @@ var STATES = {
 var CANVAS_EVENTS = {
   DOWN: ['mousedown', 'touchstart'],
   UP: ['mouseup', 'touchend']
+};
+
+var WEBXR_EVENTS = {
+  DOWN: ['selectstart'],
+  UP: ['selectend']
 };
 
 var CANVAS_HOVER_CLASS = 'a-mouse-cursor-hover';
@@ -47,8 +50,12 @@ module.exports.Component = registerComponent('cursor', {
     fuseTimeout: {default: 1500, min: 0},
     mouseCursorStylesEnabled: {default: true},
     upEvents: {default: []},
-    rayOrigin: {default: 'entity', oneOf: ['mouse', 'entity']}
+    rayOrigin: {default: 'entity', oneOf: ['mouse', 'entity', 'xrselect']}
   },
+
+  after: ['tracked-controls'],
+
+  multiple: true,
 
   init: function () {
     var self = this;
@@ -57,6 +64,8 @@ module.exports.Component = registerComponent('cursor', {
     this.cursorDownEl = null;
     this.intersectedEl = null;
     this.canvasBounds = document.body.getBoundingClientRect();
+    this.isCursorDown = false;
+    this.activeXRInput = null;
 
     // Debounce.
     this.updateCanvasBounds = utils.debounce(function updateCanvasBounds () {
@@ -67,16 +76,30 @@ module.exports.Component = registerComponent('cursor', {
     this.intersectedEventDetail = {cursorEl: this.el};
 
     // Bind methods.
-    this.onCursorDown = bind(this.onCursorDown, this);
-    this.onCursorUp = bind(this.onCursorUp, this);
-    this.onIntersection = bind(this.onIntersection, this);
-    this.onIntersectionCleared = bind(this.onIntersectionCleared, this);
-    this.onMouseMove = bind(this.onMouseMove, this);
+    this.onCursorDown = this.onCursorDown.bind(this);
+    this.onCursorUp = this.onCursorUp.bind(this);
+    this.onIntersection = this.onIntersection.bind(this);
+    this.onIntersectionCleared = this.onIntersectionCleared.bind(this);
+    this.onMouseMove = this.onMouseMove.bind(this);
+    this.onEnterVR = this.onEnterVR.bind(this);
   },
 
   update: function (oldData) {
     if (this.data.rayOrigin === oldData.rayOrigin) { return; }
     this.updateMouseEventListeners();
+  },
+
+  tick: function () {
+    // Update on frame to allow someone to select and mousemove
+    var frame = this.el.sceneEl.frame;
+    var inputSource = this.activeXRInput;
+    if (this.data.rayOrigin === 'xrselect' && frame && inputSource) {
+      this.onMouseMove({
+        frame: frame,
+        inputSource: inputSource,
+        type: 'fakeselectevent'
+      });
+    }
   },
 
   play: function () {
@@ -106,10 +129,10 @@ module.exports.Component = registerComponent('cursor', {
       canvas = el.sceneEl.canvas;
       if (data.downEvents.length || data.upEvents.length) { return; }
       CANVAS_EVENTS.DOWN.forEach(function (downEvent) {
-        canvas.addEventListener(downEvent, self.onCursorDown);
+        canvas.addEventListener(downEvent, self.onCursorDown, {passive: false});
       });
       CANVAS_EVENTS.UP.forEach(function (upEvent) {
-        canvas.addEventListener(upEvent, self.onCursorUp);
+        canvas.addEventListener(upEvent, self.onCursorUp, {passive: false});
       });
     }
 
@@ -127,9 +150,12 @@ module.exports.Component = registerComponent('cursor', {
       el.addEventListener(upEvent, self.onCursorUp);
     });
     el.addEventListener('raycaster-intersection', this.onIntersection);
+    el.addEventListener('raycaster-closest-entity-changed', this.onIntersection);
+
     el.addEventListener('raycaster-intersection-cleared', this.onIntersectionCleared);
 
     el.sceneEl.addEventListener('rendererresize', this.updateCanvasBounds);
+    el.sceneEl.addEventListener('enter-vr', this.onEnterVR);
     window.addEventListener('resize', this.updateCanvasBounds);
     window.addEventListener('scroll', this.updateCanvasBounds);
 
@@ -165,6 +191,7 @@ module.exports.Component = registerComponent('cursor', {
     canvas.removeEventListener('touchmove', this.onMouseMove);
 
     el.sceneEl.removeEventListener('rendererresize', this.updateCanvasBounds);
+    el.sceneEl.removeEventListener('enter-vr', this.onEnterVR);
     window.removeEventListener('resize', this.updateCanvasBounds);
     window.removeEventListener('scroll', this.updateCanvasBounds);
   },
@@ -178,8 +205,8 @@ module.exports.Component = registerComponent('cursor', {
     canvas.removeEventListener('touchmove', this.onMouseMove);
     el.setAttribute('raycaster', 'useWorldCoordinates', false);
     if (this.data.rayOrigin !== 'mouse') { return; }
-    canvas.addEventListener('mousemove', this.onMouseMove, false);
-    canvas.addEventListener('touchmove', this.onMouseMove, false);
+    canvas.addEventListener('mousemove', this.onMouseMove);
+    canvas.addEventListener('touchmove', this.onMouseMove, {passive: false});
     el.setAttribute('raycaster', 'useWorldCoordinates', true);
     this.updateCanvasBounds();
   },
@@ -197,6 +224,12 @@ module.exports.Component = registerComponent('cursor', {
       var point;
       var top;
 
+      var frame;
+      var inputSource;
+      var referenceSpace;
+      var pose;
+      var transform;
+
       camera.parent.updateMatrixWorld();
 
       // Calculate mouse position based on the canvas element
@@ -212,8 +245,28 @@ module.exports.Component = registerComponent('cursor', {
       mouse.x = (left / bounds.width) * 2 - 1;
       mouse.y = -(top / bounds.height) * 2 + 1;
 
-      origin.setFromMatrixPosition(camera.matrixWorld);
-      direction.set(mouse.x, mouse.y, 0.5).unproject(camera).sub(origin).normalize();
+      if (this.data.rayOrigin === 'xrselect' && (evt.type === 'selectstart' || evt.type === 'fakeselectevent')) {
+        frame = evt.frame;
+        inputSource = evt.inputSource;
+        referenceSpace = this.el.renderer.xr.getReferenceSpace();
+        pose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+        transform = pose.transform;
+        direction.set(0, 0, -1);
+        direction.applyQuaternion(transform.orientation);
+        origin.copy(transform.position);
+      } else if (evt.type === 'fakeselectout') {
+        direction.set(0, 1, 0);
+        origin.set(0, 9999, 0);
+      } else if (camera && camera.isPerspectiveCamera) {
+        origin.setFromMatrixPosition(camera.matrixWorld);
+        direction.set(mouse.x, mouse.y, 0.5).unproject(camera).sub(origin).normalize();
+      } else if (camera && camera.isOrthographicCamera) {
+        origin.set(mouse.x, mouse.y, (camera.near + camera.far) / (camera.near - camera.far)).unproject(camera); // set origin in plane of camera
+        direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
+      } else {
+        console.error('AFRAME.Raycaster: Unsupported camera type: ' + camera.type);
+      }
+
       this.el.setAttribute('raycaster', rayCasterConfig);
       if (evt.type === 'touchmove') { evt.preventDefault(); }
     };
@@ -223,6 +276,7 @@ module.exports.Component = registerComponent('cursor', {
    * Trigger mousedown and keep track of the mousedowned entity.
    */
   onCursorDown: function (evt) {
+    this.isCursorDown = true;
     // Raycast again for touch.
     if (this.data.rayOrigin === 'mouse' && evt.type === 'touchstart') {
       this.onMouseMove(evt);
@@ -230,7 +284,24 @@ module.exports.Component = registerComponent('cursor', {
       evt.preventDefault();
     }
 
-    this.twoWayEmit(EVENTS.MOUSEDOWN);
+    if (this.data.rayOrigin === 'xrselect' && evt.type === 'selectstart') {
+      this.activeXRInput = evt.inputSource;
+      this.onMouseMove(evt);
+      this.el.components.raycaster.checkIntersections();
+
+      // if something was tapped on don't do ar-hit-test things
+      if (
+        this.el.components.raycaster.intersectedEls.length &&
+        this.el.sceneEl.components['ar-hit-test'] !== undefined &&
+        this.el.sceneEl.getAttribute('ar-hit-test').enabled
+      ) {
+        // Cancel the ar-hit-test behaviours and disable the ar-hit-test
+        this.el.sceneEl.setAttribute('ar-hit-test', 'enabled', false);
+        this.reenableARHitTest = true;
+      }
+    }
+
+    this.twoWayEmit(EVENTS.MOUSEDOWN, evt);
     this.cursorDownEl = this.intersectedEl;
   },
 
@@ -242,8 +313,17 @@ module.exports.Component = registerComponent('cursor', {
    *   in case user mousedowned one entity, dragged to another, and mouseupped.
    */
   onCursorUp: function (evt) {
+    if (!this.isCursorDown) { return; }
+
+    this.isCursorDown = false;
+
     var data = this.data;
-    this.twoWayEmit(EVENTS.MOUSEUP);
+    this.twoWayEmit(EVENTS.MOUSEUP, evt);
+
+    if (this.reenableARHitTest === true) {
+      this.el.sceneEl.setAttribute('ar-hit-test', 'enabled', true);
+      this.reenableARHitTest = undefined;
+    }
 
     // If intersected entity has changed since the cursorDown, still emit mouseUp on the
     // previously cursorUp entity.
@@ -252,11 +332,19 @@ module.exports.Component = registerComponent('cursor', {
       this.cursorDownEl.emit(EVENTS.MOUSEUP, this.intersectedEventDetail);
     }
 
-    if ((!data.fuse || data.rayOrigin === 'mouse') &&
+    if ((!data.fuse || data.rayOrigin === 'mouse' || data.rayOrigin === 'xrselect') &&
         this.intersectedEl && this.cursorDownEl === this.intersectedEl) {
-      this.twoWayEmit(EVENTS.CLICK);
+      this.twoWayEmit(EVENTS.CLICK, evt);
     }
 
+    // if the current xr input stops selecting then make the ray caster point somewhere else
+    if (data.rayOrigin === 'xrselect' && this.activeXRInput === evt.inputSource) {
+      this.onMouseMove({
+        type: 'fakeselectout'
+      });
+    }
+
+    this.activeXRInput = null;
     this.cursorDownEl = null;
     if (evt.type === 'touchend') { evt.preventDefault(); }
   },
@@ -304,6 +392,20 @@ module.exports.Component = registerComponent('cursor', {
     this.clearCurrentIntersection();
   },
 
+  onEnterVR: function () {
+    this.clearCurrentIntersection(true);
+    var xrSession = this.el.sceneEl.xrSession;
+    var self = this;
+    if (!xrSession) { return; }
+    if (this.data.rayOrigin === 'mouse') { return; }
+    WEBXR_EVENTS.DOWN.forEach(function (downEvent) {
+      xrSession.addEventListener(downEvent, self.onCursorDown);
+    });
+    WEBXR_EVENTS.UP.forEach(function (upEvent) {
+      xrSession.addEventListener(upEvent, self.onCursorUp);
+    });
+  },
+
   setIntersection: function (intersectedEl, intersection) {
     var cursorEl = this.el;
     var data = this.data;
@@ -325,7 +427,7 @@ module.exports.Component = registerComponent('cursor', {
     }
 
     // Begin fuse if necessary.
-    if (data.fuseTimeout === 0 || !data.fuse) { return; }
+    if (data.fuseTimeout === 0 || !data.fuse || data.rayOrigin === 'xrselect' || data.rayOrigin === 'mouse') { return; }
     cursorEl.addState(STATES.FUSING);
     this.twoWayEmit(EVENTS.FUSING);
     this.fuseTimeout = setTimeout(function fuse () {
@@ -359,7 +461,7 @@ module.exports.Component = registerComponent('cursor', {
     // Clear fuseTimeout.
     clearTimeout(this.fuseTimeout);
 
-    // Set intersection to another raycasted element if any.
+    // Set intersection to another raycast element if any.
     if (ignoreRemaining === true) { return; }
     intersections = this.el.components.raycaster.intersections;
     if (intersections.length === 0) { return; }
@@ -373,19 +475,30 @@ module.exports.Component = registerComponent('cursor', {
   /**
    * Helper to emit on both the cursor and the intersected entity (if exists).
    */
-  twoWayEmit: function (evtName) {
+  twoWayEmit: function (evtName, originalEvent) {
     var el = this.el;
     var intersectedEl = this.intersectedEl;
     var intersection;
 
+    function addOriginalEvent (detail, evt) {
+      if (originalEvent instanceof MouseEvent) {
+        detail.mouseEvent = originalEvent;
+      } else if (typeof TouchEvent !== 'undefined' &&
+                 originalEvent instanceof TouchEvent) {
+        detail.touchEvent = originalEvent;
+      }
+    }
+
     intersection = this.el.components.raycaster.getIntersection(intersectedEl);
     this.eventDetail.intersectedEl = intersectedEl;
     this.eventDetail.intersection = intersection;
+    addOriginalEvent(this.eventDetail, originalEvent);
     el.emit(evtName, this.eventDetail);
 
     if (!intersectedEl) { return; }
 
     this.intersectedEventDetail.intersection = intersection;
+    addOriginalEvent(this.intersectedEventDetail, originalEvent);
     intersectedEl.emit(evtName, this.intersectedEventDetail);
   }
 });

@@ -24,7 +24,8 @@ var EVENTS = {
   INTERSECT: 'raycaster-intersected',
   INTERSECTION: 'raycaster-intersection',
   INTERSECT_CLEAR: 'raycaster-intersected-cleared',
-  INTERSECTION_CLEAR: 'raycaster-intersection-cleared'
+  INTERSECTION_CLEAR: 'raycaster-intersection-cleared',
+  INTERSECTION_CLOSEST_ENTITY_CHANGED: 'raycaster-closest-entity-changed'
 };
 
 /**
@@ -50,6 +51,8 @@ module.exports.Component = registerComponent('raycaster', {
     objects: {default: ''},
     origin: {type: 'vec3'},
     showLine: {default: false},
+    lineColor: {default: 'white'},
+    lineOpacity: {default: 1},
     useWorldCoordinates: {default: false}
   },
 
@@ -99,9 +102,9 @@ module.exports.Component = registerComponent('raycaster', {
     if (data.showLine &&
         (data.far !== oldData.far || data.origin !== oldData.origin ||
          data.direction !== oldData.direction || !oldData.showLine)) {
-      // Calculate unit vector for line direction. Can be multiplied via scalar to performantly
-      // adjust line length.
-      this.unitLineEndVec3.copy(data.origin).add(data.direction).normalize();
+      // Calculate unit vector for line direction. Can be multiplied via scalar and added
+      // to origin to adjust line length.
+      this.unitLineEndVec3.copy(data.direction).normalize();
       this.drawLine();
     }
 
@@ -128,7 +131,9 @@ module.exports.Component = registerComponent('raycaster', {
 
     if (oldData.enabled && !data.enabled) { this.clearAllIntersections(); }
 
-    this.setDirty();
+    if (data.objects !== oldData.objects) {
+      this.setDirty();
+    }
   },
 
   play: function () {
@@ -184,7 +189,7 @@ module.exports.Component = registerComponent('raycaster', {
   /**
    * Check for intersections and cleared intersections on an interval.
    */
-  tick: function (time) {
+  tock: function (time) {
     var data = this.data;
     var prevCheckTime = this.prevCheckTime;
 
@@ -199,7 +204,7 @@ module.exports.Component = registerComponent('raycaster', {
   },
 
   /**
-   * Raycast for intersections and emit events for current and cleared inersections.
+   * Raycast for intersections and emit events for current and cleared intersections.
    */
   checkIntersections: function () {
     var clearedIntersectedEls = this.clearedIntersectedEls;
@@ -274,8 +279,18 @@ module.exports.Component = registerComponent('raycaster', {
       el.emit(EVENTS.INTERSECTION, this.intersectionDetail);
     }
 
+    // Emit event when the closest intersected entity has changed.
+    if (prevIntersectedEls.length === 0 && intersections.length > 0 ||
+        prevIntersectedEls.length > 0 && intersections.length === 0 ||
+        (prevIntersectedEls.length && intersections.length &&
+        prevIntersectedEls[0] !== intersections[0].object.el)) {
+      this.intersectionDetail.els = this.intersectedEls;
+      this.intersectionDetail.intersections = intersections;
+      el.emit(EVENTS.INTERSECTION_CLOSEST_ENTITY_CHANGED, this.intersectionDetail);
+    }
+
     // Update line length.
-    setTimeout(this.updateLine);
+    if (data.showLine) { setTimeout(this.updateLine); }
   },
 
   updateLine: function () {
@@ -283,16 +298,14 @@ module.exports.Component = registerComponent('raycaster', {
     var intersections = this.intersections;
     var lineLength;
 
-    if (this.data.showLine) {
-      if (intersections.length) {
-        if (intersections[0].object.el === el && intersections[1]) {
-          lineLength = intersections[1].distance;
-        } else {
-          lineLength = intersections[0].distance;
-        }
+    if (intersections.length) {
+      if (intersections[0].object.el === el && intersections[1]) {
+        lineLength = intersections[1].distance;
+      } else {
+        lineLength = intersections[0].distance;
       }
-      this.drawLine(lineLength);
     }
+    this.drawLine(lineLength);
   },
 
   /**
@@ -328,8 +341,8 @@ module.exports.Component = registerComponent('raycaster', {
         return;
       }
 
-      // Grab the position and rotation. (As a side effect, this updates el.object3D.matrixWorld.)
-      el.object3D.getWorldPosition(originVec3);
+      el.object3D.updateMatrixWorld();
+      originVec3.setFromMatrixPosition(el.object3D.matrixWorld);
 
       // If non-zero origin, translate the origin into world space.
       if (data.origin.x !== 0 || data.origin.y !== 0 || data.origin.z !== 0) {
@@ -375,9 +388,12 @@ module.exports.Component = registerComponent('raycaster', {
     }
 
     // Update the length of the line if given. `unitLineEndVec3` is the direction
-    // given by data.direction, then we apply a scalar to give it a length.
+    // given by data.direction, then we apply a scalar to give it a length and the
+    // origin point to offset it.
     this.lineData.start = data.origin;
-    this.lineData.end = endVec3.copy(this.unitLineEndVec3).multiplyScalar(length);
+    this.lineData.end = endVec3.copy(this.unitLineEndVec3).multiplyScalar(length).add(data.origin);
+    this.lineData.color = data.lineColor;
+    this.lineData.opacity = data.lineOpacity;
     el.setAttribute('line', this.lineData);
   },
 
@@ -386,7 +402,7 @@ module.exports.Component = registerComponent('raycaster', {
    * Children are flattened by one level, removing the THREE.Group wrapper,
    * so that non-recursive raycasting remains useful.
    *
-   * Only push children defined as component attachemnts (e.g., setObject3D),
+   * Only push children defined as component attachments (e.g., setObject3D),
    * NOT actual children in the scene graph hierarchy.
    *
    * @param  {Array<Element>} els
@@ -396,13 +412,23 @@ module.exports.Component = registerComponent('raycaster', {
     var key;
     var i;
     var objects = this.objects;
+    var scene = this.el.sceneEl.object3D;
+
+    function isAttachedToScene (object) {
+      if (object.parent) {
+        return isAttachedToScene(object.parent);
+      } else {
+        return (object === scene);
+      }
+    }
 
     // Push meshes and other attachments onto list of objects to intersect.
     objects.length = 0;
     for (i = 0; i < els.length; i++) {
-      if (els[i].isEntity && els[i].object3D) {
-        for (key in els[i].object3DMap) {
-          objects.push(els[i].getObject3D(key));
+      var el = els[i];
+      if (el.isEntity && el.object3D && isAttachedToScene(el.object3D)) {
+        for (key in el.object3DMap) {
+          objects.push(el.getObject3D(key));
         }
       }
     }

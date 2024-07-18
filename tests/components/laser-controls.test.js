@@ -15,8 +15,6 @@ suite('laser-controls', function () {
 
   suite('init', function () {
     test('injects controllers', function () {
-      assert.ok(el.components['daydream-controls']);
-      assert.ok(el.components['gearvr-controls']);
       assert.ok(el.components['oculus-go-controls']);
       assert.ok(el.components['oculus-touch-controls']);
       assert.ok(el.components['vive-controls']);
@@ -42,7 +40,7 @@ suite('laser-controls', function () {
     });
 
     test('configures raycaster for oculus-touch-controls', function (done) {
-      el.emit('controllerconnected', {name: 'gearvr-controls'});
+      el.emit('controllerconnected', {name: 'oculus-go-controls'});
       setTimeout(() => {
         var raycaster = el.getAttribute('raycaster');
         assert.equal(raycaster.origin.x, 0);
@@ -52,18 +50,20 @@ suite('laser-controls', function () {
     });
 
     test('creates line', function (done) {
-      el.emit('controllerconnected', {name: 'daydream-controls'});
+      el.emit('controllerconnected', {name: 'oculus-go-controls'});
       setTimeout(() => {
         assert.ok(el.getAttribute('line').color);
         done();
       });
     });
 
-    test('respects set line color', function (done) {
-      el.setAttribute('line', 'color', 'red');
-      el.emit('controllerconnected', {name: 'daydream-controls'});
+    test('respects set line color and opacity', function (done) {
+      el.setAttribute('raycaster', 'lineColor', 'red');
+      el.setAttribute('raycaster', 'lineOpacity', '0.5');
+      el.emit('controllerconnected', {name: 'oculus-go-controls'});
       setTimeout(() => {
-        assert.equal(el.getAttribute('line').color, 'red');
+        assert.equal(el.getAttribute('raycaster').lineColor, 'red');
+        assert.equal(el.getAttribute('raycaster').lineOpacity, '0.5');
         done();
       });
     });

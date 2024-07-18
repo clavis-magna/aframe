@@ -34,14 +34,14 @@ var FRAGMENT_SHADER = [
 ].join('\n');
 
 /**
- * Component to take screenshots of the scene using a keboard shortcut (alt+s).
+ * Component to take screenshots of the scene using a keyboard shortcut (alt+s).
  * It can be configured to either take 360&deg; captures (`equirectangular`)
  * or regular screenshots (`projection`)
  *
  * This is based on https://github.com/spite/THREE.CubemapToEquirectangular
  * To capture an equirectangular projection of the scene a THREE.CubeCamera is used
  * The cube map produced by the CubeCamera is projected on a quad and then rendered to
- * WebGLRenderTarget with an ortographic camera.
+ * WebGLRenderTarget with an orthographic camera.
  */
 module.exports.Component = registerComponent('screenshot', {
   schema: {
@@ -50,41 +50,35 @@ module.exports.Component = registerComponent('screenshot', {
     camera: {type: 'selector'}
   },
 
-  init: function () {
+  sceneOnly: true,
+
+  setup: function () {
     var el = this.el;
-    var self = this;
-
-    if (el.renderer) {
-      setup();
-    } else {
-      el.addEventListener('render-target-loaded', setup);
-    }
-
-    function setup () {
-      var gl = el.renderer.getContext();
-      if (!gl) { return; }
-      self.cubeMapSize = gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE);
-      self.material = new THREE.RawShaderMaterial({
-        uniforms: {map: {type: 't', value: null}},
-        vertexShader: VERTEX_SHADER,
-        fragmentShader: FRAGMENT_SHADER,
-        side: THREE.DoubleSide
-      });
-      self.quad = new THREE.Mesh(
-        new THREE.PlaneBufferGeometry(1, 1),
-        self.material
-      );
-      self.quad.visible = false;
-      self.camera = new THREE.OrthographicCamera(-1 / 2, 1 / 2, 1 / 2, -1 / 2, -10000, 10000);
-      self.canvas = document.createElement('canvas');
-      self.ctx = self.canvas.getContext('2d');
-      el.object3D.add(self.quad);
-      self.onKeyDown = self.onKeyDown.bind(self);
-    }
+    if (this.canvas) { return; }
+    var gl = el.renderer.getContext();
+    if (!gl) { return; }
+    this.cubeMapSize = gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE);
+    this.material = new THREE.RawShaderMaterial({
+      uniforms: {map: {type: 't', value: null}},
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: FRAGMENT_SHADER,
+      side: THREE.DoubleSide
+    });
+    this.quad = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      this.material
+    );
+    this.quad.visible = false;
+    this.camera = new THREE.OrthographicCamera(-1 / 2, 1 / 2, 1 / 2, -1 / 2, -10000, 10000);
+    this.canvas = document.createElement('canvas');
+    this.ctx = this.canvas.getContext('2d');
+    el.object3D.add(this.quad);
+    this.onKeyDown = this.onKeyDown.bind(this);
   },
 
   getRenderTarget: function (width, height) {
     return new THREE.WebGLRenderTarget(width, height, {
+      colorSpace: this.el.sceneEl.renderer.outputColorSpace,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       wrapS: THREE.ClampToEdgeWrapping,
@@ -135,6 +129,7 @@ module.exports.Component = registerComponent('screenshot', {
     var size;
     var camera;
     var cubeCamera;
+    var cubeRenderTarget;
     // Configure camera.
     if (projection === 'perspective') {
       // Quad is only used in equirectangular mode. Hide it in this case.
@@ -145,9 +140,16 @@ module.exports.Component = registerComponent('screenshot', {
     } else {
       // Use ortho camera.
       camera = this.camera;
+      cubeRenderTarget = new THREE.WebGLCubeRenderTarget(
+        Math.min(this.cubeMapSize, 2048),
+        {
+          format: THREE.RGBFormat,
+          generateMipmaps: true,
+          minFilter: THREE.LinearMipmapLinearFilter,
+          colorSpace: THREE.SRGBColorSpace
+        });
       // Create cube camera and copy position from scene camera.
-      cubeCamera = new THREE.CubeCamera(el.camera.near, el.camera.far,
-                                        Math.min(this.cubeMapSize, 2048));
+      cubeCamera = new THREE.CubeCamera(el.camera.near, el.camera.far, cubeRenderTarget);
       // Copy camera position into cube camera;
       el.camera.getWorldPosition(cubeCamera.position);
       el.camera.getWorldQuaternion(cubeCamera.quaternion);
@@ -169,25 +171,33 @@ module.exports.Component = registerComponent('screenshot', {
    * Maintained for backwards compatibility.
    */
   capture: function (projection) {
-    var isVREnabled = this.el.renderer.vr.enabled;
+    var isVREnabled = this.el.renderer.xr.enabled;
     var renderer = this.el.renderer;
     var params;
+    this.setup();
     // Disable VR.
-    renderer.vr.enabled = false;
+    renderer.xr.enabled = false;
     params = this.setCapture(projection);
     this.renderCapture(params.camera, params.size, params.projection);
     // Trigger file download.
     this.saveCapture();
     // Restore VR.
-    renderer.vr.enabled = isVREnabled;
+    renderer.xr.enabled = isVREnabled;
   },
 
   /**
    * Return canvas instead of triggering download (e.g., for uploading blob to server).
    */
   getCanvas: function (projection) {
+    var isVREnabled = this.el.renderer.xr.enabled;
+    var renderer = this.el.renderer;
+    this.setup();
+    // Disable VR.
     var params = this.setCapture(projection);
+    renderer.xr.enabled = false;
     this.renderCapture(params.camera, params.size, params.projection);
+    // Restore VR.
+    renderer.xr.enabled = isVREnabled;
     return this.canvas;
   },
 
@@ -205,10 +215,13 @@ module.exports.Component = registerComponent('screenshot', {
     this.resize(size.width, size.height);
     // Render scene to render target.
     renderer.autoClear = true;
-    renderer.render(el.object3D, camera, output, true);
+    renderer.clear();
+    renderer.setRenderTarget(output);
+    renderer.render(el.object3D, camera);
     renderer.autoClear = autoClear;
-    // Read image pizels back.
+    // Read image pixels back.
     renderer.readRenderTargetPixels(output, 0, 0, size.width, size.height, pixels);
+    renderer.setRenderTarget(null);
     if (projection === 'perspective') {
       pixels = this.flipPixelsVertically(pixels, size.width, size.height);
     }

@@ -13,21 +13,35 @@ var registerComponent = require('../core/component').registerComponent;
 module.exports.Component = registerComponent('tracked-controls', {
   schema: {
     autoHide: {default: true},
-    controller: {default: 0},
+    controller: {default: -1},
     id: {type: 'string', default: ''},
     hand: {type: 'string', default: ''},
     idPrefix: {type: 'string', default: ''},
+    handTrackingEnabled: {default: false},
     orientationOffset: {type: 'vec3'},
     // Arm model parameters when not 6DoF.
-    armModel: {default: true},
-    headElement: {type: 'selector'}
+    armModel: {default: false},
+    headElement: {type: 'selector'},
+    iterateControllerProfiles: {default: false},
+    space: {type: 'string', oneOf: ['targetRaySpace', 'gripSpace'], default: 'targetRaySpace'}
   },
+
+  // Run after both tracked-controls-webvr and tracked-controls-webxr to allow other components
+  // to be after either without having to list them both.
+  after: ['tracked-controls-webvr', 'tracked-controls-webxr'],
 
   update: function () {
     var data = this.data;
     var el = this.el;
     if (el.sceneEl.hasWebXR) {
-      el.setAttribute('tracked-controls-webxr', data);
+      el.setAttribute('tracked-controls-webxr', {
+        id: data.id,
+        hand: data.hand,
+        index: data.controller,
+        iterateControllerProfiles: data.iterateControllerProfiles,
+        handTrackingEnabled: data.handTrackingEnabled,
+        space: data.space
+      });
     } else {
       el.setAttribute('tracked-controls-webvr', data);
     }

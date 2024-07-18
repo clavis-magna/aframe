@@ -13,7 +13,9 @@ suite('gltf-model', function () {
     asset.setAttribute('src', SRC);
     el = this.el = entityFactory({assets: [asset]});
     if (el.hasLoaded) { done(); }
-    el.addEventListener('loaded', function () { done(); });
+    el.addEventListener('loaded', function () {
+      done();
+    });
   });
 
   test('can load', function (done) {
@@ -71,10 +73,11 @@ suite('gltf-model', function () {
       animations: animations
     };
 
-    this.sinon.stub(THREE, 'GLTFLoader', function MockGLTFLoader () {
+    this.sinon.replace(THREE, 'GLTFLoader', function MockGLTFLoader () {
       this.load = function (url, onLoad) {
         process.nextTick(onLoad.bind(null, gltfMock));
       };
+      this.setDRACOLoader = function () {};
     });
 
     el.addEventListener('model-loaded', function () {

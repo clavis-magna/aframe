@@ -1,6 +1,3 @@
-// Polyfill `Promise`.
-window.Promise = window.Promise || require('promise-polyfill');
-
 // WebVR polyfill
 // Check before the polyfill runs.
 window.hasNativeWebVRImplementation = !!window.navigator.getVRDisplays ||
@@ -17,21 +14,14 @@ if (!window.hasNativeWebXRImplementation && !window.hasNativeWebVRImplementation
   var polyfillConfig = {
     BUFFER_SCALE: bufferScale,
     CARDBOARD_UI_DISABLED: true,
-    ROTATE_INSTRUCTIONS_DISABLED: true
+    ROTATE_INSTRUCTIONS_DISABLED: true,
+    MOBILE_WAKE_LOCK: !!window.cordova
   };
   window.webvrpolyfill = new WebVRPolyfill(polyfillConfig);
 }
 
 var utils = require('./utils/');
 var debug = utils.debug;
-
-if (utils.isIE11) {
-  // Polyfill `CustomEvent`.
-  require('custom-event-polyfill');
-  // Polyfill String.startsWith.
-  require('../vendor/starts-with-polyfill');
-}
-
 var error = debug('A-Frame:error');
 var warn = debug('A-Frame:warn');
 
@@ -43,15 +33,13 @@ if (window.document.currentScript && window.document.currentScript.parentNode !=
 }
 
 // Error if not using a server.
-if (window.location.protocol === 'file:') {
+if (!window.cordova && window.location.protocol === 'file:') {
   error(
     'This HTML file is currently being served via the file:// protocol. ' +
     'Assets, textures, and models WILL NOT WORK due to cross-origin policy! ' +
     'Please use a local or hosted server: ' +
-    'https://aframe.io/docs/0.5.0/introduction/getting-started.html#using-a-local-server.');
+    'https://aframe.io/docs/1.4.0/introduction/installation.html#use-a-local-server.');
 }
-
-require('present'); // Polyfill `performance.now()`.
 
 // CSS.
 if (utils.device.isBrowserEnvironment) {
@@ -71,6 +59,7 @@ var shaders = require('./core/shader').shaders;
 var systems = require('./core/system').systems;
 // Exports THREE to window so three.js can be used without alteration.
 var THREE = window.THREE = require('./lib/three');
+var readyState = require('./core/readyState');
 
 var pkg = require('../package');
 
@@ -78,8 +67,8 @@ require('./components/index'); // Register standard components.
 require('./geometries/index'); // Register standard geometries.
 require('./shaders/index'); // Register standard shaders.
 require('./systems/index'); // Register standard systems.
-var ANode = require('./core/a-node');
-var AEntity = require('./core/a-entity'); // Depends on ANode and core components.
+var ANode = require('./core/a-node').ANode;
+var AEntity = require('./core/a-entity').AEntity; // Depends on ANode and core components.
 
 require('./core/a-assets');
 require('./core/a-cubemap');
@@ -89,22 +78,26 @@ require('./core/a-mixin');
 require('./extras/components/');
 require('./extras/primitives/');
 
-console.log('A-Frame Version: 0.9.2 (Date 2019-05-08, Commit #799dea5)');
-console.log('three Version (https://github.com/supermedium/three.js):',
+console.log('A-Frame Version: 1.6.0 (Date 2024-06-27, Commit #b47032d5)');
+console.log('THREE Version (https://github.com/supermedium/three.js):',
             pkg.dependencies['super-three']);
 console.log('WebVR Polyfill Version:', pkg.dependencies['webvr-polyfill']);
+
+// Wait for ready state, unless user asynchronously initializes A-Frame.
+if (!window.AFRAME_ASYNC) {
+  readyState.waitForDocumentReadyState();
+}
 
 module.exports = window.AFRAME = {
   AComponent: require('./core/component').Component,
   AEntity: AEntity,
   ANode: ANode,
-  ANIME: require('super-animejs'),
+  ANIME: require('super-animejs').default,
   AScene: AScene,
   components: components,
   coreComponents: Object.keys(components),
   geometries: require('./core/geometry').geometries,
   registerComponent: registerComponent,
-  registerElement: require('./core/a-register-element').registerElement,
   registerGeometry: registerGeometry,
   registerPrimitive: registerPrimitive,
   registerShader: registerShader,
@@ -117,6 +110,7 @@ module.exports = window.AFRAME = {
   schema: require('./core/schema'),
   shaders: shaders,
   systems: systems,
+  emitReady: readyState.emitReady,
   THREE: THREE,
   utils: utils,
   version: pkg.version

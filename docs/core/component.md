@@ -151,7 +151,7 @@ types:
 | int             | Calls `parseInt` (e.g., `"124.5"` to `124`).                                                                                                                                                                                                                                                                                                                     | 0                        |
 | map             | Same parsing as the `asset` property type. Will possibly be used by the A-Frame Inspector to present texture assets.                                                                                                                                                                                                                                             | ''                       |
 | model           | Same parsing as the `asset` property type. Will possibly be used by the A-Frame Inspector to present model assets.                                                                                                                                                                                                                                               | ''                       |
-| number          | Calls `parseFloat` (e.g., `"124.5"` to `124.5'`).                                                                                                                                                                                                                                                                                                                  | 0                        |
+| number          | Calls `parseFloat` (e.g., `"124.5"` to `124.5`).                                                                                                                                                                                                                                                                                                                  | 0                        |
 | selector        | Calls `querySelector` (e.g., `"#box"` to `<a-entity id="box">`).                                                                                                                                                                                                                                                                                                  | null                     |
 | selectorAll     | Calls `querySelectorAll` and converts `NodeList` to `Array` (e.g., `".boxes"` to [<a-entity class="boxes", ...]),                                                                                                                                                                                                                                                | null                     |
 | string          | Doesn't do any parsing.                                                                                                                                                                                                                                                                                                                                          | ''                       |
@@ -287,7 +287,7 @@ AFRAME.registerComponent('cursor', {
     // Set up initial state and variables.
     this.intersection = null;
     // Bind methods.
-    this.onIntersection = AFRAME.utils.bind(this.onIntersection, this);
+    this.onIntersection = this.onIntersection.bind(this);
     // Attach event listener.
     this.el.addEventListener('raycaster-intersection', this.onIntersection);
   }
@@ -584,6 +584,22 @@ AFRAME.registerComponent('foo', {
 });
 ```
 
+### `sceneOnly`
+
+The `sceneOnly` flag indicates if a component can only be applied to the scene
+entity. Since `sceneOnly` is set to `false` by default, the component can be added
+to any entity. For example, any entity could have a geometry component.
+
+But if a component has `sceneOnly` set to `true`, then the component can only be
+applied to `<a-scene>`:
+
+```js
+AFRAME.registerComponent('foo', {
+  sceneOnly: true,
+  // ...
+});
+```
+
 ### `events`
 
 The `events` object allows for conveniently defining event handlers that get
@@ -608,6 +624,46 @@ AFRAME.registerComponent('foo', {
   }
 });
 ```
+
+### `before` / `after`
+
+The `before` and `after` properties allow a component to specify when their `.tick()`
+and `.tock()` methods should be called in relation to other components. This is
+useful in cases where the component depends on the result of others. For example, a
+component that uses the world position of the users hands would want to run _after_ the
+`hand-tracking-controls` component so that the position it sees is up to date.
+
+While both a `before` and a `after` constraint can be specified, only one is needed.
+A-Frame will automatically determine a suitable order among all registered components.
+In case the constraints cause an impossible situation, e.g. when one component would
+need to be both _before_ and _after_ another component, a warning will be logged and
+the resulting order is undefined.
+
+Here's an example showing how to use `before` and `after`:
+
+```js
+AFRAME.registerComponent('foo', {
+  after: ['bar'],
+  // ...
+  tick: function() {
+    console.log('Called second');
+  }
+  // ...
+});
+
+AFRAME.registerComponent('bar', {
+  before: ['foo'],
+  // ...
+  tick: function() {
+    console.log('Called first');
+  }
+  // ...
+});
+```
+
+Note that the order is global, meaning in the above example _all_ `bar` components get
+their `.tick()` method called before _any_ `foo` component. It does not matter if these
+components are on the same entity or not.
 
 ## Component Prototype Methods
 

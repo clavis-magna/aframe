@@ -109,7 +109,7 @@ suite('raycaster', function () {
       el2.setAttribute('geometry', 'primitive: box');
       el2.addEventListener('loaded', function () {
         el.setAttribute('raycaster', 'objects', '.clickable');
-        component.tick();
+        component.tock();
         assert.equal(component.objects.length, 1);
         assert.equal(component.objects[0], el2.object3D.children[0]);
         assert.equal(el2, el2.object3D.children[0].el);
@@ -120,16 +120,54 @@ suite('raycaster', function () {
     });
   });
 
-  suite('tick', function () {
+  test('Objects not attached to scene are not whitelisted', function (done) {
+    var el2 = document.createElement('a-entity');
+    var el3 = document.createElement('a-entity');
+    el2.setAttribute('class', 'clickable');
+    el2.setAttribute('geometry', 'primitive: box');
+    el3.setAttribute('class', 'clickable');
+    el3.setAttribute('geometry', 'primitive: box');
+    el3.addEventListener('loaded', function () {
+      el3.object3D.parent = null;
+      el.setAttribute('raycaster', 'objects', '.clickable');
+      component.tock();
+      assert.equal(component.objects.length, 1);
+      assert.equal(component.objects[0], el2.object3D.children[0]);
+      assert.equal(el2, el2.object3D.children[0].el);
+      done();
+    });
+    sceneEl.appendChild(el2);
+    sceneEl.appendChild(el3);
+  });
+
+  test('Objects with parent not attached to scene are not whitelisted', function (done) {
+    var el2 = document.createElement('a-entity');
+    var el3 = document.createElement('a-entity');
+    el2.setAttribute('class', 'clickable');
+    el2.setAttribute('geometry', 'primitive: box');
+    el3.setAttribute('class', 'clickable');
+    el3.setAttribute('geometry', 'primitive: box');
+    el3.addEventListener('loaded', function () {
+      el2.object3D.parent = null;
+      el.setAttribute('raycaster', 'objects', '.clickable');
+      component.tock();
+      assert.equal(component.objects.length, 0);
+      done();
+    });
+    sceneEl.appendChild(el2);
+    el2.appendChild(el3);
+  });
+
+  suite('tock', function () {
     test('is throttled by interval', function () {
       var intersectSpy = this.sinon.spy(raycaster, 'intersectObjects');
       el.setAttribute('raycaster', 'interval', 1000);
       component.prevCheckTime = 1000;
-      component.tick(1500);
+      component.tock(1500);
       assert.notOk(intersectSpy.called);
 
       el.setAttribute('raycaster', 'interval', 499);
-      component.tick(1500);
+      component.tock(1500);
       assert.ok(intersectSpy.called);
     });
   });
@@ -158,11 +196,11 @@ suite('raycaster', function () {
 
     test('refresh objects when new entities are added to the scene', function (done) {
       var newEl = document.createElement('a-entity');
-      component.tick();
+      component.tock();
       var numObjects = component.objects.length;
       newEl.setAttribute('geometry', 'primitive: box');
       newEl.addEventListener('loaded', function () {
-        component.tick();
+        component.tock();
         assert.equal(component.objects.length, numObjects + 1);
         done();
       });
@@ -171,11 +209,11 @@ suite('raycaster', function () {
 
     test('refresh objects when new entities are removed from the scene', function (done) {
       var newEl = document.createElement('a-entity');
-      component.tick();
+      component.tock();
       var numObjects = component.objects.length;
       newEl.setAttribute('geometry', 'primitive: box');
       sceneEl.addEventListener('child-detached', function doAssert () {
-        component.tick();
+        component.tock();
         assert.equal(component.objects.length, numObjects);
         sceneEl.removeEventListener('child-detached', doAssert);
         done();
@@ -191,11 +229,11 @@ suite('raycaster', function () {
       var newEl = document.createElement('a-entity');
       newEl.setAttribute('geometry', 'primitive: box');
       newEl.addEventListener('loaded', function doAssert () {
-        component.tick();
+        component.tock();
         assert.equal(component.objects.length, 0);
         newEl.setAttribute('ray-target', '');
         setTimeout(function () {
-          component.tick();
+          component.tock();
           assert.equal(component.objects.length, 1);
           sceneEl.removeEventListener('child-attached', doAssert);
           done();
@@ -206,11 +244,11 @@ suite('raycaster', function () {
 
     test('refresh objects when setObject3D() or removeObject3D() is called', function () {
       el.setAttribute('raycaster', {objects: '[ray-target]'});
-      component.tick();
+      component.tock();
       assert.equal(component.dirty, false);
       sceneEl.emit('object3dset');
       assert.equal(component.dirty, true);
-      component.tick();
+      component.tock();
       assert.equal(component.dirty, false);
       sceneEl.emit('object3dremove');
       assert.equal(component.dirty, true);
@@ -240,7 +278,7 @@ suite('raycaster', function () {
         assert.ok(evt.detail.getIntersection(targetEl));
         done();
       });
-      component.tick();
+      component.tock();
     });
 
     test('updates intersectedEls', function (done) {
@@ -250,7 +288,7 @@ suite('raycaster', function () {
         assert.equal(component.intersectedEls[0], targetEl);
         done();
       });
-      component.tick();
+      component.tock();
     });
 
     test('emits event on raycaster entity with details', function (done) {
@@ -260,7 +298,7 @@ suite('raycaster', function () {
         assert.equal(evt.detail.intersections[0].object.el, targetEl);
         done();
       });
-      component.tick();
+      component.tock();
     });
 
     test('does not re-emit raycaster-intersection if no new intersections', function (done) {
@@ -269,8 +307,8 @@ suite('raycaster', function () {
       raycasterEl.addEventListener('raycaster-intersection', function () {
         count++;
       });
-      component.tick();
-      component.tick();
+      component.tock();
+      component.tock();
       setTimeout(() => {
         assert.equal(count, 1);
         done();
@@ -282,9 +320,9 @@ suite('raycaster', function () {
       targetEl.addEventListener('raycaster-intersected', function (evt) {
         count++;
       });
-      component.tick();
-      component.tick();
-      component.tick();
+      component.tock();
+      component.tock();
+      component.tock();
       setTimeout(() => {
         // 2 because the raycaster hits the box in two points.
         assert.equal(count, 2);
@@ -298,7 +336,7 @@ suite('raycaster', function () {
         assert.equal(evt.detail.el, raycasterEl);
         done();
       });
-      component.tick();
+      component.tock();
     });
 
     test('emits event on raycaster entity when clearing intersection', function (done) {
@@ -310,10 +348,10 @@ suite('raycaster', function () {
           assert.notEqual(component.clearedIntersectedEls.indexOf(targetEl), -1);
           raycasterEl.removeEventListener('raycaster-intersection-cleared', cb);
           done();
-        });
-        component.tick();
+        }, {once: true});
+        component.tock();
       });
-      component.tick();
+      component.tock();
     });
 
     test('emits event on intersected entity when clearing intersection', function (done) {
@@ -324,35 +362,35 @@ suite('raycaster', function () {
         targetEl.addEventListener('raycaster-intersected-cleared', function (evt) {
           assert.equal(evt.detail.el, raycasterEl);
           done();
-        });
-        component.tick();
+        }, {once: true});
+        component.tock();
       });
-      component.tick();
+      component.tock();
     });
 
     test('clears intersections when disabled', function (done) {
       targetEl.addEventListener('raycaster-intersected', function () {
         targetEl.addEventListener('raycaster-intersected-cleared', function () {
           done();
-        });
+        }, {once: true});
         assert.equal(component.intersectedEls.length, 2);
         assert.equal(component.clearedIntersectedEls.length, 0);
         el.setAttribute('raycaster', 'enabled', false);
         assert.equal(component.intersectedEls.length, 0);
         assert.equal(component.intersections.length, 0);
         assert.equal(component.clearedIntersectedEls.length, 2);
-      });
-      component.tick();
+      }, {once: true});
+      component.tock();
     });
 
     test('emits intersectioncleared when disabled', function (done) {
       targetEl.addEventListener('raycaster-intersected', function () {
         el.addEventListener('raycaster-intersection-cleared', function () {
           done();
-        });
+        }, {once: true});
         el.setAttribute('raycaster', 'enabled', false);
       });
-      component.tick();
+      component.tock();
     });
   });
 
@@ -361,7 +399,7 @@ suite('raycaster', function () {
       var origin;
       el.setAttribute('position', '1 2 3');
       sceneEl.object3D.updateMatrixWorld();  // Normally handled by renderer.
-      component.tick();
+      component.tock();
       origin = raycaster.ray.origin;
       assert.equal(origin.x, 1);
       assert.equal(origin.y, 2);
@@ -372,7 +410,7 @@ suite('raycaster', function () {
       var origin;
       parentEl.setAttribute('position', '1 2 3');
       sceneEl.object3D.updateMatrixWorld();  // Normally handled by renderer.
-      component.tick();
+      component.tock();
       origin = raycaster.ray.origin;
       assert.equal(origin.x, 1);
       assert.equal(origin.y, 2);
@@ -389,7 +427,7 @@ suite('raycaster', function () {
     test('updates ray direction if rotation changes', function () {
       var direction;
       el.setAttribute('rotation', '180 0 0');
-      component.tick();
+      component.tock();
       direction = raycaster.ray.direction;
       assert.equal(Math.floor(direction.x), 0);
       assert.equal(Math.floor(direction.y), 0);
@@ -400,7 +438,7 @@ suite('raycaster', function () {
       var direction;
       parentEl.setAttribute('rotation', '180 0 0');
       sceneEl.object3D.updateMatrixWorld();
-      component.tick();
+      component.tock();
       direction = raycaster.ray.direction;
       assert.equal(Math.floor(direction.x), 0);
       assert.equal(Math.floor(direction.y), 0);
@@ -412,7 +450,7 @@ suite('raycaster', function () {
       el.setAttribute('position', '5 5 5');
       el.setAttribute('raycaster', 'origin', '0 -1 1');
       sceneEl.object3D.updateMatrixWorld();
-      component.tick();
+      component.tock();
       origin = raycaster.ray.origin;
       assert.equal(origin.x, 5);
       assert.equal(origin.y, 4);
@@ -420,7 +458,7 @@ suite('raycaster', function () {
 
       el.setAttribute('rotation', '180 0 0');
       sceneEl.object3D.updateMatrixWorld();
-      component.tick();
+      component.tock();
       assert.equal(origin.x, 5);
       assert.equal(origin.y, 6);
       assert.equal(origin.z, 4);
@@ -430,14 +468,14 @@ suite('raycaster', function () {
       var direction;
       el.setAttribute('raycaster', 'direction', '0 -1 0');
       sceneEl.object3D.updateMatrixWorld();
-      component.tick();
+      component.tock();
       direction = raycaster.ray.direction;
       assert.equal(direction.x, 0);
       assert.equal(direction.y, -1);
       assert.equal(direction.z, 0);
 
       el.setAttribute('rotation', '0 0 180');
-      component.tick();
+      component.tock();
       direction = raycaster.ray.direction;
       assert.equal(direction.y, 1);
     });
@@ -449,7 +487,7 @@ suite('raycaster', function () {
       el.setAttribute('position', '5 5 5');
       el.setAttribute('rotation', '30 45 90');
       sceneEl.object3D.updateMatrixWorld();  // Normally handled by renderer.
-      component.tick();
+      component.tock();
       var origin = raycaster.ray.origin;
       var direction = raycaster.ray.direction;
       assert.equal(origin.x, 1);
@@ -510,13 +548,13 @@ suite('raycaster', function () {
       box.addEventListener('loaded', function () {
         el.sceneEl.object3D.updateMatrixWorld();
         component.refreshObjects();
-        component.tick();
+        component.tock();
         setTimeout(() => {
           line = el.getAttribute('line');
           assert.equal(new THREE.Vector3().copy(line.start).sub(line.end).length(), 24.5);
           box.parentNode.removeChild(box);
           setTimeout(() => {
-            component.tick();
+            component.tock();
             setTimeout(() => {
               line = el.getAttribute('line');
               assert.equal(new THREE.Vector3().copy(line.start).sub(line.end).length(), 1000);
@@ -561,9 +599,9 @@ suite('raycaster', function () {
       box.addEventListener('loaded', function () {
         el.sceneEl.object3D.updateMatrixWorld();
         component.refreshObjects();
-        component.tick();
-        rayEl2.components.raycaster.tick();
-        rayEl2.components.raycaster.tick();
+        component.tock();
+        rayEl2.components.raycaster.tock();
+        rayEl2.components.raycaster.tock();
         setTimeout(() => {
           // Ensure component and geometry are unaffected by other raycaster
           line = el.getAttribute('line');
@@ -572,7 +610,7 @@ suite('raycaster', function () {
           assert.equal(lineStart.fromArray(lineArray).sub(lineEnd).length(), 24.5);
           box.parentNode.removeChild(box);
           setTimeout(() => {
-            component.tick();
+            component.tock();
             setTimeout(() => {
               line = el.getAttribute('line');
               assert.equal(new THREE.Vector3().copy(line.start).sub(line.end).length(), 1000);

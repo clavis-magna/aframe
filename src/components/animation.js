@@ -1,4 +1,4 @@
-var anime = require('super-animejs');
+var anime = require('super-animejs').default;
 var components = require('../core/component').components;
 var registerComponent = require('../core/component').registerComponent;
 var THREE = require('../lib/three');
@@ -323,8 +323,8 @@ module.exports.Component = registerComponent('animation', {
         value = anim.animatables[0].target.aframeProperty;
 
         // Need to do a last value check for animation timeline since all the tweening
-        // begins simultaenously even if the value has not changed. Also better for perf
-        // anyways.
+        // begins simultaneously even if the value has not changed. Also better for perf
+        // anyway.
         if (value === lastValue) { return; }
         lastValue = value;
 
@@ -375,12 +375,6 @@ module.exports.Component = registerComponent('animation', {
         var lastValue = {};
         return function (anim) {
           var value = anim.animatables[0].target;
-
-          if (data.property === PROP_SCALE) {
-            value.x = Math.max(0.0001, value.x);
-            value.y = Math.max(0.0001, value.y);
-            value.z = Math.max(0.0001, value.z);
-          }
 
           // For animation timeline.
           if (value.x === lastValue.x &&
@@ -540,9 +534,9 @@ function getPropertyType (el, property) {
  * Convert object to radians.
  */
 function toRadians (obj) {
-  obj.x = THREE.Math.degToRad(obj.x);
-  obj.y = THREE.Math.degToRad(obj.y);
-  obj.z = THREE.Math.degToRad(obj.z);
+  obj.x = THREE.MathUtils.degToRad(obj.x);
+  obj.y = THREE.MathUtils.degToRad(obj.y);
+  obj.z = THREE.MathUtils.degToRad(obj.z);
 }
 
 function addEventListeners (el, eventNames, handler) {
@@ -582,7 +576,7 @@ function setRawProperty (el, path, value, type) {
   var targetValue;
 
   if (path.startsWith('object3D.rotation')) {
-    value = THREE.Math.degToRad(value);
+    value = THREE.MathUtils.degToRad(value);
   }
 
   // Walk.

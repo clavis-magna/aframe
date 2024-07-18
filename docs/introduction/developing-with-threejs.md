@@ -162,12 +162,6 @@ reference to the A-Frame entity from the three.js object via `.el`:
 entityEl.getObject3D('light').el;  // entityEl
 ```
 
-There's also a `.getOrCreateObject3D(name, constructor)` method for creating
-and setting an `Object3D` if one has not been set with the name. This is
-commonly used in the case of `THREE.Mesh` when both the geometry and material
-components need to get or create a mesh. Whichever component gets initialized
-first creates the mesh, then the other component gets the mesh.
-
 ### Removing an `Object3D` From an Entity
 
 To remove an `Object3D` from an entity, and consequently the three.js scene, we
@@ -213,26 +207,28 @@ accomplished with matrices, but three.js provides helpers to make them easier.
 
 Normally, we'd need to call `.updateMatrixWorld ()` on parent `Object3D`s, but
 three.js defaults `Object3D.matrixAutoUpdate` to `true`. We can use three.js's
-`.getWorldPosition ()` and `.getWorldRotation ()`.
+`.getWorldPosition (vector)` and `.getWorldQuaternion (quaternion)`.
 
 To get the world position of an `Object3D`:
 
 ```js
-entityEl.object3D.getWorldPosition();
+var worldPosition = new THREE.Vector3();
+entityEl.object3D.getWorldPosition(worldPosition);
 ```
 
 To get the world rotation of an `Object3D`:
 
 ```js
-entityEl.object3D.getWorldRotation();
+var worldQuaternion = new THREE.Quaternion();
+entityEl.object3D.getWorldQuaternion(worldQuaternion);
 ```
 
 three.js `Object3D` has [more functions available for local-to-world transforms][object3d]:
 
 - `.localToWorld (vector)`
-- `.getWorldDirection ()`
-- `.getWorldQuaternion ()`
-- `.getWorldScale ()`
+- `.getWorldDirection (vector)`
+- `.getWorldQuaternion (quaternion)`
+- `.getWorldScale (vector)`
 
 ### World to Local Transforms
 

@@ -7,7 +7,7 @@ registerPrimitive('a-sky', utils.extendDeep({}, getMeshMixin(), {
   defaultComponents: {
     geometry: {
       primitive: 'sphere',
-      radius: 5000,
+      radius: 500,
       segmentsWidth: 64,
       segmentsHeight: 32
     },
@@ -20,5 +20,5 @@ registerPrimitive('a-sky', utils.extendDeep({}, getMeshMixin(), {
     scale: '-1 1 1'
   },
 
-  mappings: utils.extendDeep({}, meshPrimitives['a-sphere'].prototype.mappings)
+  mappings: utils.extendDeep({}, meshPrimitives['a-sphere'].mappings)
 }));

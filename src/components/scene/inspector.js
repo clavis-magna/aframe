@@ -25,6 +25,8 @@ module.exports.Component = registerComponent('inspector', {
     url: {default: INSPECTOR_URL}
   },
 
+  sceneOnly: true,
+
   init: function () {
     this.firstPlay = true;
     this.onKeydown = this.onKeydown.bind(this);
@@ -59,7 +61,7 @@ module.exports.Component = registerComponent('inspector', {
    * <ctrl> + <alt> + i keyboard shortcut.
    */
   onKeydown: function (evt) {
-    var shortcutPressed = evt.keyCode === 73 && evt.ctrlKey && evt.altKey;
+    var shortcutPressed = evt.keyCode === 73 && (evt.ctrlKey && evt.altKey || evt.getModifierState('AltGraph'));
     if (!shortcutPressed) { return; }
     this.openInspector();
   },

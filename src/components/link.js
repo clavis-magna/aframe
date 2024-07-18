@@ -168,7 +168,7 @@ module.exports.Component = registerComponent('link', {
 
   /**
    * 1. Swap plane that represents portal with sphere with a hole when the camera is close
-   * so user can peek inside portal. Sphere is rendered on oposite side of portal
+   * so user can peek inside portal. Sphere is rendered on opposite side of portal
    * from where user enters.
    * 2. Place the url/title above or inside portal depending on distance to camera.
    * 3. Face portal to camera when far away from user.
@@ -228,7 +228,7 @@ module.exports.Component = registerComponent('link', {
           this.semiSphereEl.setAttribute('visible', true);
           this.peekCameraPortalOrientation = cameraPortalOrientation;
         } else {
-          // Calculate wich side the camera is approaching the camera (back / front).
+          // Calculate which side the camera is approaching the camera (back / front).
           // Adjust text orientation based on camera position.
           if (cameraPortalOrientation <= 0.0) {
             textEl.setAttribute('rotation', '0 180 0');
@@ -357,7 +357,7 @@ registerShader('portal', {
     'vec3 direction = normalize(vWorldPosition - cameraPosition);',
     'vec2 sampleUV;',
     'float borderThickness = clamp(exp(-vDistance / 50.0), 0.6, 0.95);',
-    'sampleUV.y = saturate(direction.y * 0.5  + 0.5);',
+    'sampleUV.y = clamp(direction.y * 0.5  + 0.5, 0.0, 1.0);',
     'sampleUV.x = atan(direction.z, -direction.x) * -RECIPROCAL_PI2 + 0.5;',
     'if (vDistanceToCenter > borderThickness && borderEnabled == 1.0) {',
     'gl_FragColor = vec4(strokeColor, 1.0);',

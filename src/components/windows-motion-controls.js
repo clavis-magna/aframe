@@ -1,6 +1,5 @@
 /* global THREE */
 var registerComponent = require('../core/component').registerComponent;
-var bind = require('../utils/bind');
 
 var trackedControlsUtils = require('../utils/tracked-controls');
 var checkControllerPresentAndSetup = trackedControlsUtils.checkControllerPresentAndSetup;
@@ -14,11 +13,73 @@ var warn = utils.debug('components:windows-motion-controls:warn');
 
 var DEFAULT_HANDEDNESS = require('../constants').DEFAULT_HANDEDNESS;
 
-var MODEL_BASE_URL = 'https://cdn.aframe.io/controllers/microsoft/';
+var AFRAME_CDN_ROOT = require('../constants').AFRAME_CDN_ROOT;
+var MODEL_BASE_URL = AFRAME_CDN_ROOT + 'controllers/microsoft/';
 var MODEL_FILENAMES = { left: 'left.glb', right: 'right.glb', default: 'universal.glb' };
 
-var GAMEPAD_ID_PREFIX = 'Spatial Controller (Spatial Interaction Source) ';
+var isWebXRAvailable = require('../utils/').device.isWebXRAvailable;
+
+var GAMEPAD_ID_WEBXR = 'windows-mixed-reality';
+var GAMEPAD_ID_WEBVR = 'Spatial Controller (Spatial Interaction Source) ';
 var GAMEPAD_ID_PATTERN = /([0-9a-zA-Z]+-[0-9a-zA-Z]+)$/;
+
+var GAMEPAD_ID_PREFIX = isWebXRAvailable ? GAMEPAD_ID_WEBXR : GAMEPAD_ID_WEBVR;
+
+var INPUT_MAPPING_WEBVR = {
+  // A-Frame specific semantic axis names
+  axes: {'thumbstick': [0, 1], 'trackpad': [2, 3]},
+  // A-Frame specific semantic button names
+  buttons: ['thumbstick', 'trigger', 'grip', 'menu', 'trackpad'],
+  // A mapping of the semantic name to node name in the glTF model file,
+  // that should be transformed by axis value.
+  // This array mirrors the browser Gamepad.axes array, such that
+  // the mesh corresponding to axis 0 is in this array index 0.
+  axisMeshNames: [
+    'THUMBSTICK_X',
+    'THUMBSTICK_Y',
+    'TOUCHPAD_TOUCH_X',
+    'TOUCHPAD_TOUCH_Y'
+  ],
+  // A mapping of the semantic name to button node name in the glTF model file,
+  // that should be transformed by button value.
+  buttonMeshNames: {
+    'trigger': 'SELECT',
+    'menu': 'MENU',
+    'grip': 'GRASP',
+    'thumbstick': 'THUMBSTICK_PRESS',
+    'trackpad': 'TOUCHPAD_PRESS'
+  },
+  pointingPoseMeshName: 'POINTING_POSE'
+};
+
+var INPUT_MAPPING_WEBXR = {
+  // A-Frame specific semantic axis names
+  axes: {'touchpad': [0, 1], 'thumbstick': [2, 3]},
+  // A-Frame specific semantic button names
+  buttons: ['trigger', 'squeeze', 'touchpad', 'thumbstick', 'menu'],
+  // A mapping of the semantic name to node name in the glTF model file,
+  // that should be transformed by axis value.
+  // This array mirrors the browser Gamepad.axes array, such that
+  // the mesh corresponding to axis 0 is in this array index 0.
+  axisMeshNames: [
+    'TOUCHPAD_TOUCH_X',
+    'TOUCHPAD_TOUCH_X',
+    'THUMBSTICK_X',
+    'THUMBSTICK_Y'
+  ],
+  // A mapping of the semantic name to button node name in the glTF model file,
+  // that should be transformed by button value.
+  buttonMeshNames: {
+    'trigger': 'SELECT',
+    'menu': 'MENU',
+    'squeeze': 'GRASP',
+    'thumbstick': 'THUMBSTICK_PRESS',
+    'touchpad': 'TOUCHPAD_PRESS'
+  },
+  pointingPoseMeshName: 'POINTING_POSE'
+};
+
+var INPUT_MAPPING = isWebXRAvailable ? INPUT_MAPPING_WEBXR : INPUT_MAPPING_WEBVR;
 
 /**
  * Windows Motion Controller controls.
@@ -38,45 +99,22 @@ module.exports.Component = registerComponent('windows-motion-controls', {
     hideDisconnected: {default: true}
   },
 
-  mapping: {
-    // A-Frame specific semantic axis names
-    axes: {'thumbstick': [0, 1], 'trackpad': [2, 3]},
-    // A-Frame specific semantic button names
-    buttons: ['thumbstick', 'trigger', 'grip', 'menu', 'trackpad'],
-    // A mapping of the semantic name to node name in the glTF model file,
-    // that should be transformed by axis value.
-    // This array mirrors the browser Gamepad.axes array, such that
-    // the mesh corresponding to axis 0 is in this array index 0.
-    axisMeshNames: [
-      'THUMBSTICK_X',
-      'THUMBSTICK_Y',
-      'TOUCHPAD_TOUCH_X',
-      'TOUCHPAD_TOUCH_Y'
-    ],
-    // A mapping of the semantic name to button node name in the glTF model file,
-    // that should be transformed by button value.
-    buttonMeshNames: {
-      'trigger': 'SELECT',
-      'menu': 'MENU',
-      'grip': 'GRASP',
-      'thumbstick': 'THUMBSTICK_PRESS',
-      'trackpad': 'TOUCHPAD_PRESS'
-    },
-    pointingPoseMeshName: 'POINTING_POSE'
-  },
+  after: ['tracked-controls'],
+
+  mapping: INPUT_MAPPING,
 
   bindMethods: function () {
-    this.onModelError = bind(this.onModelError, this);
-    this.onModelLoaded = bind(this.onModelLoaded, this);
-    this.onControllersUpdate = bind(this.onControllersUpdate, this);
-    this.checkIfControllerPresent = bind(this.checkIfControllerPresent, this);
-    this.onAxisMoved = bind(this.onAxisMoved, this);
+    this.onModelError = this.onModelError.bind(this);
+    this.onModelLoaded = this.onModelLoaded.bind(this);
+    this.onControllersUpdate = this.onControllersUpdate.bind(this);
+    this.checkIfControllerPresent = this.checkIfControllerPresent.bind(this);
+    this.onAxisMoved = this.onAxisMoved.bind(this);
   },
 
   init: function () {
     var self = this;
     var el = this.el;
-    this.onButtonChanged = bind(this.onButtonChanged, this);
+    this.onButtonChanged = this.onButtonChanged.bind(this);
     this.onButtonDown = function (evt) { onButtonEvent(evt.detail.id, 'down', self); };
     this.onButtonUp = function (evt) { onButtonEvent(evt.detail.id, 'up', self); };
     this.onButtonTouchStart = function (evt) { onButtonEvent(evt.detail.id, 'touchstart', self); };
@@ -134,7 +172,8 @@ module.exports.Component = registerComponent('windows-motion-controls', {
   checkIfControllerPresent: function () {
     checkControllerPresentAndSetup(this, GAMEPAD_ID_PREFIX, {
       hand: this.data.hand,
-      index: this.data.pair
+      index: this.data.pair,
+      iterateControllerProfiles: true
     });
   },
 
@@ -171,7 +210,7 @@ module.exports.Component = registerComponent('windows-motion-controls', {
     var hand = this.data.hand;
     var filename;
 
-    if (controller) {
+    if (controller && !window.hasNativeWebXRImplementation) {
       // Read hand directly from the controller, rather than this.data, as in the case that the controller
       // is unhanded this.data will still have 'left' or 'right' (depending on what the user inserted in to the scene).
       // In this case, we want to load the universal model, so need to get the '' from the controller.
@@ -225,7 +264,7 @@ module.exports.Component = registerComponent('windows-motion-controls', {
   },
 
   loadModel: function (url) {
-    // The model is loaded by the gltf-model compoent when this attribute is initially set,
+    // The model is loaded by the gltf-model component when this attribute is initially set,
     // removed and re-loaded if the given url changes.
     this.el.setAttribute('gltf-model', 'url(' + url + ')');
   },
@@ -237,6 +276,8 @@ module.exports.Component = registerComponent('windows-motion-controls', {
     var meshName;
     var mesh;
     var meshInfo;
+
+    if (evt.target !== this.el) { return; }
 
     debug('Processing model');
 
@@ -439,6 +480,7 @@ module.exports.Component = registerComponent('windows-motion-controls', {
 
   setModelVisibility: function (visible) {
     var model = this.el.getObject3D('mesh');
+    if (!this.controllerPresent) { return; }
     visible = visible !== undefined ? visible : this.modelVisible;
     this.modelVisible = visible;
     if (!model) { return; }
